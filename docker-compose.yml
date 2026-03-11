@@ -1,0 +1,20 @@
+services:
+  web:
+    build: .
+    ports:
+      - "${PORT:-8000}:8000"
+    volumes:
+      - db-data:/data
+    env_file: .env
+    restart: unless-stopped
+
+  scheduler:
+    build: .
+    volumes:
+      - db-data:/data
+    env_file: .env
+    restart: unless-stopped
+    command: uv run python scheduler.py
+
+volumes:
+  db-data:

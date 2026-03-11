@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block title %}{{ film.title_display }} — Kino OV Bielefeld{% endblock %}
+
+{% block content %}
+<a href="/" class="back-link">← Zurück zur Übersicht</a>
+
+<div class="film-detail-header">
+    <div class="film-detail-poster">
+        {% if film.poster_url %}
+        <img src="{{ film.poster_url }}" alt="{{ film.title_display }}">
+        {% else %}
+        <div class="no-poster" style="height: 300px; display: flex; align-items: center; justify-content: center; font-size: 3rem; background: var(--bg-hover); border-radius: var(--radius);">🎬</div>
+        {% endif %}
+    </div>
+    <div class="film-detail-info">
+        <h1 style="font-family: 'Playfair Display', serif; color: var(--text);">{{ film.title_original or film.title_display }}</h1>
+
+        {% if film.title_de and film.title_de != film.title_original %}
+        <div class="original-title">{{ film.title_de }}</div>
+        {% endif %}
+
+        <div class="film-meta" style="margin-top: 0.6rem; font-size: 0.9rem;">
+            {% if film.release_year %}{{ film.release_year }}{% endif %}
+            {% if film.runtime_minutes %}<span class="separator">·</span> {{ film.runtime_minutes }} min{% endif %}
+            {% if film.original_language %}<span class="separator">·</span> Sprache: {{ film.original_language | upper }}{% endif %}
+        </div>
+
+        <div style="margin-top: 0.8rem; display: flex; gap: 0.5rem;">
+            {% if imdb_url %}
+            <a href="{{ imdb_url }}" target="_blank" rel="noopener" class="filter-btn">IMDb →</a>
+            {% endif %}
+            {% if tmdb_url %}
+            <a href="{{ tmdb_url }}" target="_blank" rel="noopener" class="filter-btn">TMDb →</a>
+            {% endif %}
+        </div>
+
+        {% if film.overview %}
+        <div class="overview">{{ film.overview }}</div>
+        {% endif %}
+    </div>
+</div>
+
+<h2 style="font-family: 'Playfair Display', serif; font-size: 1.2rem; margin-bottom: 0.8rem; color: var(--accent);">Vorstellungen</h2>
+
+{% if showtimes_by_date %}
+<table class="showtime-table">
+    <thead>
+        <tr>
+            <th>Datum</th>
+            <th>Uhrzeit</th>
+            <th>Kino</th>
+            <th>Version</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for date_key, showtime_list in showtimes_by_date.items() %}
+            {% for st in showtime_list %}
+            <tr>
+                <td>{{ st.showtime | date_de }}</td>
+                <td style="font-weight: 500;">{{ st.showtime | time_hm }}</td>
+                <td>
+                    <span class="cinema-dot {{ st.cinema }}"></span>
+                    {{ cinema_names.get(st.cinema, st.cinema) }}
+                </td>
+                <td>
+                    {% if st.language_tag %}
+                    <span class="tag tag-{{ st.language_tag | lower }}">{{ st.language_tag }}</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if st.booking_url %}
+                    <a href="{{ st.booking_url }}" target="_blank" rel="noopener" style="color: var(--accent); text-decoration: none; font-size: 0.82rem;">Tickets →</a>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p style="color: var(--text-muted);">Keine kommenden Vorstellungen.</p>
+{% endif %}
+
+{% endblock %}

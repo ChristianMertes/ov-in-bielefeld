@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block header_extra %}
+<div class="filters">
+    <a href="/?sort={{ sort }}" class="filter-btn {% if not cinema_filter %}active{% endif %}">Alle</a>
+    {% for key, name in cinema_names.items() %}
+    <a href="/?cinema={{ key }}&sort={{ sort }}" class="filter-btn {% if cinema_filter == key %}active{% endif %}">{{ name }}</a>
+    {% endfor %}
+    <span style="color: var(--border); margin: 0 0.2rem;">|</span>
+    <a href="/?sort=date{% if cinema_filter %}&cinema={{ cinema_filter }}{% endif %}" class="filter-btn {% if sort == 'date' %}active{% endif %}">nach Datum</a>
+    <a href="/?sort=title{% if cinema_filter %}&cinema={{ cinema_filter }}{% endif %}" class="filter-btn {% if sort == 'title' %}active{% endif %}">nach Titel</a>
+</div>
+{% endblock %}
+
+{% block content %}
+{% if films %}
+<div class="film-list">
+    {% for film in films %}
+    <div class="film-card">
+        <div class="film-poster">
+            {% if film.poster_url %}
+            <img src="{{ film.poster_url }}" alt="{{ film.title_display }}" loading="lazy">
+            {% else %}
+            <div class="no-poster">🎬</div>
+            {% endif %}
+        </div>
+        <div class="film-info">
+            <h2><a href="/film/{{ film.id }}">{{ film.title_original or film.title_display }}</a></h2>
+            {% if film.title_de and film.title_de != film.title_original %}
+            <div class="film-title-de">{{ film.title_de }}</div>
+            {% endif %}
+            <div class="film-meta">
+                {% if film.release_year %}{{ film.release_year }}<span class="separator">·</span>{% endif %}
+                {% if film.runtime_minutes %}{{ film.runtime_minutes }} min<span class="separator">·</span>{% endif %}
+                {% if film.original_language %}{{ film.original_language | upper }}{% endif %}
+
+                <span class="film-links">
+                    {% if film.imdb_id %}
+                    <a href="{{ film.imdb_id | imdb_url }}" target="_blank" rel="noopener">IMDb</a>
+                    {% endif %}
+                    {% if film.tmdb_id %}
+                    <a href="{{ film.tmdb_id | tmdb_url }}" target="_blank" rel="noopener">TMDb</a>
+                    {% endif %}
+                </span>
+            </div>
+
+            <div class="showtimes-section">
+                {% for cinema_key, cinema_showtimes in film.showtimes_list | groupby("cinema") %}
+                <div class="cinema-group">
+                    <span class="cinema-label {{ cinema_key }}">{{ cinema_names.get(cinema_key, cinema_key) }}</span>
+                    <div class="chips">
+                        {% for st in cinema_showtimes | sort(attribute="showtime") %}
+                        <a href="{{ st.booking_url or '#' }}"
+                           class="showtime-chip"
+                           {% if st.booking_url %}target="_blank" rel="noopener"{% endif %}>
+                            <span class="date">{{ st.showtime | date_de }}</span>
+                            <span class="time">{{ st.showtime | time_hm }}</span>
+                            {% if st.language_tag %}
+                            <span class="tag tag-{{ st.language_tag | lower }}">{{ st.language_tag }}</span>
+                            {% endif %}
+                        </a>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+    <p>Keine OV/OmU-Vorstellungen gefunden.</p>
+    <p style="font-size: 0.88rem;">Entweder ist gerade nichts im Programm, oder der Scraper muss noch laufen.</p>
+</div>
+{% endif %}
+{% endblock %}
