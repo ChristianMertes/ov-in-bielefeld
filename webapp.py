@@ -63,6 +63,44 @@ def _format_votes(votes) -> str:
     return str(votes)
 
 
+_WEEKDAYS_DE = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
+_MONTHS_DE = ["Januar", "Februar", "März", "April", "Mai", "Juni",
+              "Juli", "August", "September", "Oktober", "November", "Dezember"]
+
+
+def _next_showtime_label(dt_str: str, now: datetime) -> str:
+    """Return a friendly German label for the next showtime relative to now."""
+    try:
+        dt = datetime.fromisoformat(dt_str)
+    except (ValueError, TypeError):
+        return ""
+    today = now.date()
+    show_date = dt.date()
+    delta = (show_date - today).days
+    time_str = f"{dt.hour:02d}:{dt.minute:02d} Uhr"
+    weekday = _WEEKDAYS_DE[dt.weekday()]
+    # Calendar-week difference: compare Mondays of each week
+    monday_now = today - timedelta(days=today.weekday())
+    monday_show = show_date - timedelta(days=show_date.weekday())
+    week_diff = (monday_show - monday_now).days // 7
+    if delta == 0:
+        return f"heute {time_str}"
+    elif delta == 1:
+        return f"morgen {time_str}"
+    elif delta == 2:
+        return f"übermorgen {time_str}"
+    elif week_diff == 0:
+        return f"{weekday} {time_str}"
+    elif week_diff == 1:
+        return f"nächste Woche {weekday}"
+    elif week_diff == 2:
+        return f"übernächste Woche {weekday}"
+    elif week_diff <= 4:
+        return f"{weekday} in {week_diff} Wochen"
+    else:
+        return f"{show_date.day}. {_MONTHS_DE[show_date.month - 1]}"
+
+
 templates.env.filters["date_de"] = _format_date_de
 templates.env.filters["time_hm"] = _format_time
 templates.env.filters["votes_fmt"] = _format_votes
@@ -88,6 +126,7 @@ async def index(
     sort: str = Query("date", description="Sort by: date or title"),
 ):
     """Main page showing all upcoming OV/OmU films."""
+    now = datetime.now()
     with get_db() as db:
         films_raw = get_upcoming_films(db, cinema=cinema)
 
@@ -115,6 +154,9 @@ async def index(
             film_dict["language_tag_list"] = (
                 f["language_tags"].split(",") if f["language_tags"] else []
             )
+            film_dict["next_showtime_label"] = _next_showtime_label(
+                f["next_showtime"], now
+            )
             films.append(film_dict)
 
     if lang:
@@ -137,7 +179,7 @@ async def index(
         "sort": sort,
         "cinema_names": CINEMA_DISPLAY_NAMES,
         "language_names": LANGUAGE_DISPLAY_NAMES,
-        "now": datetime.now(),
+        "now": now,
     })
 
 

@@ -132,6 +132,23 @@
             border-color: var(--accent-dim);
         }
 
+        .film-card[data-tooltip]:hover::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: calc(100% + 6px);
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--bg-hover);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 0.35rem 0.65rem;
+            font-size: 0.8rem;
+            white-space: nowrap;
+            z-index: 20;
+            pointer-events: none;
+        }
+
         /* Stretch the title link to cover the whole card */
         .film-info h2 a::after {
             content: '';

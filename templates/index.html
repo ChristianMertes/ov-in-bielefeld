@@ -28,7 +28,7 @@
 {% if films %}
 <div class="film-list">
     {% for film in films %}
-    <div class="film-card">
+    <div class="film-card"{% if film.next_showtime_label %} data-tooltip="nächste Vorstellung: {{ film.next_showtime_label }}"{% endif %}>
         <div class="film-poster">
             {% if film.poster_url %}
             <img src="{{ film.poster_url }}" alt="{{ film.title_display }}" loading="lazy">
