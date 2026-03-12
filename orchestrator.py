@@ -204,6 +204,7 @@ def _write_film(db, film_data: dict) -> tuple[int, bool]:
             "overview": tmdb_data.get("overview"),
             "release_year": tmdb_data.get("release_year"),
             "runtime_minutes": tmdb_data.get("runtime_minutes"),
+            "tmdb_popularity": tmdb_data.get("tmdb_popularity"),
         })
     else:
         # No TMDb match — use scraper metadata as fallback

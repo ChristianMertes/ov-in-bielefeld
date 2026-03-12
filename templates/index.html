@@ -19,6 +19,7 @@
         <a href="/?sort=title{% if cinema_filter %}&cinema={{ cinema_filter }}{% endif %}{% if lang_filter %}&lang={{ lang_filter }}{% endif %}" class="filter-btn {% if sort == 'title' %}active{% endif %}">nach Titel</a>
         <a href="/?sort=rating{% if cinema_filter %}&cinema={{ cinema_filter }}{% endif %}{% if lang_filter %}&lang={{ lang_filter }}{% endif %}" class="filter-btn {% if sort == 'rating' %}active{% endif %}">nach IMDb</a>
         <a href="/?sort=rt{% if cinema_filter %}&cinema={{ cinema_filter }}{% endif %}{% if lang_filter %}&lang={{ lang_filter }}{% endif %}" class="filter-btn {% if sort == 'rt' %}active{% endif %}">nach Tomatometer</a>
+        <a href="/?sort=popularity{% if cinema_filter %}&cinema={{ cinema_filter }}{% endif %}{% if lang_filter %}&lang={{ lang_filter }}{% endif %}" class="filter-btn {% if sort == 'popularity' %}active{% endif %}">nach Popularität</a>
     </div>
 </div>
 {% endblock %}

@@ -126,6 +126,8 @@ async def index(
         films.sort(key=lambda f: f.get("imdb_rating") or 0, reverse=True)
     elif sort == "rt":
         films.sort(key=lambda f: f.get("rt_score") or 0, reverse=True)
+    elif sort == "popularity":
+        films.sort(key=lambda f: f.get("tmdb_popularity") or 0, reverse=True)
 
     return templates.TemplateResponse("index.html", {
         "request": request,

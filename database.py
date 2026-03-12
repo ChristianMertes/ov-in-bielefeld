@@ -49,6 +49,7 @@ def init_db():
                 imdb_rating REAL,
                 imdb_votes INTEGER,
                 rt_score INTEGER,
+                tmdb_popularity REAL,
                 UNIQUE(title_display)
             );
 
@@ -85,6 +86,7 @@ def init_db():
                 overview TEXT,
                 release_year INTEGER,
                 runtime_minutes INTEGER,
+                tmdb_popularity REAL,
                 cached_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
 
@@ -99,6 +101,8 @@ def init_db():
             "ALTER TABLE films ADD COLUMN imdb_rating REAL",
             "ALTER TABLE films ADD COLUMN imdb_votes INTEGER",
             "ALTER TABLE films ADD COLUMN rt_score INTEGER",
+            "ALTER TABLE films ADD COLUMN tmdb_popularity REAL",
+            "ALTER TABLE tmdb_cache ADD COLUMN tmdb_popularity REAL",
         ]:
             try:
                 db.execute(stmt)
@@ -118,7 +122,7 @@ def upsert_film(db: sqlite3.Connection, title_display: str, **kwargs) -> int:
         updates = []
         values = []
         for key in ("title_original", "title_de", "original_language", "tmdb_id", "imdb_id",
-                     "poster_url", "overview", "release_year", "runtime_minutes"):
+                     "poster_url", "overview", "release_year", "runtime_minutes", "tmdb_popularity"):
             if key in kwargs and kwargs[key] is not None:
                 updates.append(f"{key} = ?")
                 values.append(kwargs[key])
@@ -133,7 +137,7 @@ def upsert_film(db: sqlite3.Connection, title_display: str, **kwargs) -> int:
         cols = ["title_display"]
         vals = [title_display]
         for key in ("title_original", "title_de", "original_language", "tmdb_id", "imdb_id",
-                     "poster_url", "overview", "release_year", "runtime_minutes"):
+                     "poster_url", "overview", "release_year", "runtime_minutes", "tmdb_popularity"):
             if key in kwargs and kwargs[key] is not None:
                 cols.append(key)
                 vals.append(kwargs[key])

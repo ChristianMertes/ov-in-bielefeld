@@ -148,6 +148,7 @@ def _tmdb_search_request(title: str, language: Optional[str] = None,
         "overview": movie.get("overview", ""),
         "release_year": _extract_year(movie.get("release_date")),
         "runtime_minutes": details.get("runtime") if details else None,
+        "tmdb_popularity": movie.get("popularity"),
     }
 
 
