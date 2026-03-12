@@ -3,7 +3,7 @@
 {% block header_extra %}
 <div class="filters-group">
     <div class="filters">
-        <a href="/?sort={{ sort }}{% if lang_filter %}&lang={{ lang_filter }}{% endif %}" class="filter-btn {% if not cinema_filter %}active{% endif %}">Alle</a>
+        <a href="/?sort={{ sort }}{% if lang_filter %}&lang={{ lang_filter }}{% endif %}" class="filter-btn {% if not cinema_filter %}active{% endif %}">Alle Kinos</a>
         {% for key, name in cinema_names.items() %}
         <a href="/?cinema={{ key }}&sort={{ sort }}{% if lang_filter %}&lang={{ lang_filter }}{% endif %}" class="filter-btn {% if cinema_filter == key %}active{% endif %}">{{ name }}</a>
         {% endfor %}
@@ -15,6 +15,7 @@
         {% endfor %}
     </div>
     <div class="filters">
+        <span class="filters-label">Sortieren</span>
         <a href="/?sort=date{% if cinema_filter %}&cinema={{ cinema_filter }}{% endif %}{% if lang_filter %}&lang={{ lang_filter }}{% endif %}" class="filter-btn {% if sort == 'date' %}active{% endif %}">nach Datum</a>
         <a href="/?sort=title{% if cinema_filter %}&cinema={{ cinema_filter }}{% endif %}{% if lang_filter %}&lang={{ lang_filter }}{% endif %}" class="filter-btn {% if sort == 'title' %}active{% endif %}">nach Titel</a>
         <a href="/?sort=rating{% if cinema_filter %}&cinema={{ cinema_filter }}{% endif %}{% if lang_filter %}&lang={{ lang_filter }}{% endif %}" class="filter-btn {% if sort == 'rating' %}active{% endif %}">nach IMDb</a>
