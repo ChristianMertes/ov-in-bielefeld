@@ -11,7 +11,7 @@
     <div class="filters">
         <a href="/?sort={{ sort }}{% if cinema_filter %}&cinema={{ cinema_filter }}{% endif %}" class="filter-btn {% if not lang_filter %}active{% endif %}">Alle Sprachen</a>
         {% for key, name in language_names.items() %}
-        <a href="/?lang={{ key }}&sort={{ sort }}{% if cinema_filter %}&cinema={{ cinema_filter }}{% endif %}" class="filter-btn {% if lang_filter == key %}active{% endif %}">{{ name }}</a>
+        <a href="/?lang={{ key }}&sort={{ sort }}{% if cinema_filter %}&cinema={{ cinema_filter }}{% endif %}" class="filter-btn {% if lang_filter == key %}active{% endif %}"><img src="/images/{{ key }}.svg" alt="{{ key | upper }}" class="lang-flag"> {{ name }}</a>
         {% endfor %}
     </div>
     <div class="filters">
@@ -43,7 +43,7 @@
             <div class="film-meta">
                 {% if film.release_year %}{{ film.release_year }}<span class="separator">·</span>{% endif %}
                 {% if film.runtime_minutes %}{{ film.runtime_minutes }} min<span class="separator">·</span>{% endif %}
-                {% if film.original_language %}{{ film.original_language | upper }}{% endif %}
+                {% if film.original_language %}<img src="/images/{{ film.original_language }}.svg" alt="{{ film.original_language | upper }}" class="lang-flag" title="{{ film.original_language | upper }}">{% endif %}
                 {% if film.imdb_rating %}<span class="separator">·</span><span class="imdb-rating">★ {{ film.imdb_rating }}</span>{% endif %}
                 {% if film.rt_score is not none and film.rt_score != "" %}<span class="separator">·</span><span class="rt-score">🍅 {{ film.rt_score }}%</span>{% endif %}
 

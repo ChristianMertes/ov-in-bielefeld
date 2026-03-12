@@ -23,7 +23,7 @@
         <div class="film-meta" style="margin-top: 0.6rem; font-size: 0.9rem;">
             {% if film.release_year %}{{ film.release_year }}{% endif %}
             {% if film.runtime_minutes %}<span class="separator">·</span> {{ film.runtime_minutes }} min{% endif %}
-            {% if film.original_language %}<span class="separator">·</span> Sprache: {{ film.original_language | upper }}{% endif %}
+            {% if film.original_language %}<span class="separator">·</span> <img src="/images/{{ film.original_language }}.svg" alt="{{ film.original_language | upper }}" class="lang-flag" title="{{ film.original_language | upper }}">{% endif %}
             {% if film.imdb_rating %}<span class="separator">·</span> <span class="imdb-rating">★ {{ film.imdb_rating }}</span>{% if film.imdb_votes %} <span style="color: var(--text-muted); font-size: 0.8em;">({{ film.imdb_votes | votes_fmt }})</span>{% endif %}{% endif %}
             {% if film.rt_score is not none and film.rt_score != "" %}<span class="separator">·</span> <span class="rt-score">🍅 {{ film.rt_score }}%</span>{% endif %}
         </div>
