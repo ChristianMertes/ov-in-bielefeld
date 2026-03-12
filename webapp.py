@@ -24,6 +24,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Kino OV Bielefeld", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/images", StaticFiles(directory="images"), name="images")
 templates = Jinja2Templates(directory="templates")
 
 # Add custom template filters
