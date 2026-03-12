@@ -8,3 +8,9 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Private information
+.env
+
+# DB
+kino_ov.db

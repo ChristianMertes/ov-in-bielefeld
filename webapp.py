@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from database import init_db, get_db, get_upcoming_films, get_film_showtimes, get_film_by_id
-from tmdb_client import get_imdb_url, get_tmdb_url
+from tmdb_client import get_imdb_url, get_tmdb_url, get_omdb_url
 
 
 @asynccontextmanager
@@ -30,6 +30,7 @@ templates = Jinja2Templates(directory="templates")
 # Add custom template filters
 templates.env.filters["imdb_url"] = get_imdb_url
 templates.env.filters["tmdb_url"] = get_tmdb_url
+templates.env.filters["omdb_url"] = get_omdb_url
 
 
 def _format_date_de(dt_str: str) -> str:
@@ -51,8 +52,20 @@ def _format_time(dt_str: str) -> str:
         return dt_str
 
 
+def _format_votes(votes) -> str:
+    """Format vote count as compact string: 1234567 → '1.2M'."""
+    if not votes:
+        return ""
+    if votes >= 1_000_000:
+        return f"{votes / 1_000_000:.1f}M"
+    if votes >= 1_000:
+        return f"{votes / 1_000:.0f}K"
+    return str(votes)
+
+
 templates.env.filters["date_de"] = _format_date_de
 templates.env.filters["time_hm"] = _format_time
+templates.env.filters["votes_fmt"] = _format_votes
 
 
 CINEMA_DISPLAY_NAMES = {
@@ -61,11 +74,17 @@ CINEMA_DISPLAY_NAMES = {
     "cinemaxx": "CinemaxX",
 }
 
+LANGUAGE_DISPLAY_NAMES = {
+    "en": "Englisch",
+    "fr": "Französisch",
+}
+
 
 @app.get("/", response_class=HTMLResponse)
 async def index(
     request: Request,
     cinema: str = Query(None, description="Filter by cinema"),
+    lang: str = Query(None, description="Filter by language"),
     sort: str = Query("date", description="Sort by: date or title"),
 ):
     """Main page showing all upcoming OV/OmU films."""
@@ -98,15 +117,24 @@ async def index(
             )
             films.append(film_dict)
 
+    if lang:
+        films = [f for f in films if f.get("original_language") == lang]
+
     if sort == "title":
         films.sort(key=lambda f: f["title_display"].lower())
+    elif sort == "rating":
+        films.sort(key=lambda f: f.get("imdb_rating") or 0, reverse=True)
+    elif sort == "rt":
+        films.sort(key=lambda f: f.get("rt_score") or 0, reverse=True)
 
     return templates.TemplateResponse("index.html", {
         "request": request,
         "films": films,
         "cinema_filter": cinema,
+        "lang_filter": lang,
         "sort": sort,
         "cinema_names": CINEMA_DISPLAY_NAMES,
+        "language_names": LANGUAGE_DISPLAY_NAMES,
         "now": datetime.now(),
     })
 

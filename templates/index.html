@@ -1,14 +1,25 @@
 {% extends "base.html" %}
 
 {% block header_extra %}
-<div class="filters">
-    <a href="/?sort={{ sort }}" class="filter-btn {% if not cinema_filter %}active{% endif %}">Alle</a>
-    {% for key, name in cinema_names.items() %}
-    <a href="/?cinema={{ key }}&sort={{ sort }}" class="filter-btn {% if cinema_filter == key %}active{% endif %}">{{ name }}</a>
-    {% endfor %}
-    <span style="color: var(--border); margin: 0 0.2rem;">|</span>
-    <a href="/?sort=date{% if cinema_filter %}&cinema={{ cinema_filter }}{% endif %}" class="filter-btn {% if sort == 'date' %}active{% endif %}">nach Datum</a>
-    <a href="/?sort=title{% if cinema_filter %}&cinema={{ cinema_filter }}{% endif %}" class="filter-btn {% if sort == 'title' %}active{% endif %}">nach Titel</a>
+<div class="filters-group">
+    <div class="filters">
+        <a href="/?sort={{ sort }}{% if lang_filter %}&lang={{ lang_filter }}{% endif %}" class="filter-btn {% if not cinema_filter %}active{% endif %}">Alle</a>
+        {% for key, name in cinema_names.items() %}
+        <a href="/?cinema={{ key }}&sort={{ sort }}{% if lang_filter %}&lang={{ lang_filter }}{% endif %}" class="filter-btn {% if cinema_filter == key %}active{% endif %}">{{ name }}</a>
+        {% endfor %}
+    </div>
+    <div class="filters">
+        <a href="/?sort={{ sort }}{% if cinema_filter %}&cinema={{ cinema_filter }}{% endif %}" class="filter-btn {% if not lang_filter %}active{% endif %}">Alle Sprachen</a>
+        {% for key, name in language_names.items() %}
+        <a href="/?lang={{ key }}&sort={{ sort }}{% if cinema_filter %}&cinema={{ cinema_filter }}{% endif %}" class="filter-btn {% if lang_filter == key %}active{% endif %}">{{ name }}</a>
+        {% endfor %}
+    </div>
+    <div class="filters">
+        <a href="/?sort=date{% if cinema_filter %}&cinema={{ cinema_filter }}{% endif %}{% if lang_filter %}&lang={{ lang_filter }}{% endif %}" class="filter-btn {% if sort == 'date' %}active{% endif %}">nach Datum</a>
+        <a href="/?sort=title{% if cinema_filter %}&cinema={{ cinema_filter }}{% endif %}{% if lang_filter %}&lang={{ lang_filter }}{% endif %}" class="filter-btn {% if sort == 'title' %}active{% endif %}">nach Titel</a>
+        <a href="/?sort=rating{% if cinema_filter %}&cinema={{ cinema_filter }}{% endif %}{% if lang_filter %}&lang={{ lang_filter }}{% endif %}" class="filter-btn {% if sort == 'rating' %}active{% endif %}">nach IMDb</a>
+        <a href="/?sort=rt{% if cinema_filter %}&cinema={{ cinema_filter }}{% endif %}{% if lang_filter %}&lang={{ lang_filter }}{% endif %}" class="filter-btn {% if sort == 'rt' %}active{% endif %}">nach Tomatometer</a>
+    </div>
 </div>
 {% endblock %}
 
@@ -33,6 +44,8 @@
                 {% if film.release_year %}{{ film.release_year }}<span class="separator">·</span>{% endif %}
                 {% if film.runtime_minutes %}{{ film.runtime_minutes }} min<span class="separator">·</span>{% endif %}
                 {% if film.original_language %}{{ film.original_language | upper }}{% endif %}
+                {% if film.imdb_rating %}<span class="separator">·</span><span class="imdb-rating">★ {{ film.imdb_rating }}</span>{% endif %}
+                {% if film.rt_score is not none and film.rt_score != "" %}<span class="separator">·</span><span class="rt-score">🍅 {{ film.rt_score }}%</span>{% endif %}
 
                 <span class="film-links">
                     {% if film.imdb_id %}
@@ -40,6 +53,9 @@
                     {% endif %}
                     {% if film.tmdb_id %}
                     <a href="{{ film.tmdb_id | tmdb_url }}" target="_blank" rel="noopener">TMDb</a>
+                    {% endif %}
+                    {% if film.imdb_id %}
+                    <a href="{{ film.imdb_id | omdb_url }}" target="_blank" rel="noopener">OMDb</a>
                     {% endif %}
                 </span>
             </div>

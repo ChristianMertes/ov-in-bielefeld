@@ -129,6 +129,7 @@ ov-in-bielefeld/
 | Variable | Pflicht | Beschreibung |
 |----------|---------|--------------|
 | `TMDB_API_KEY` | ✅ | TMDb API Key (kostenlos) |
+| `OMDB_API_KEY` | optional | OMDb API Key für Rotten-Tomatoes-Scores (kostenlos, 1000 req/Tag) |
 | `TELEGRAM_BOT_TOKEN` | optional | Bot-Token von @BotFather |
 | `TELEGRAM_CHAT_ID` | optional | Eigene Chat-ID (z.B. via @userinfobot) |
 | `WEBAPP_URL` | optional | Öffentliche URL für Telegram-Links (default: http://localhost:8000) |

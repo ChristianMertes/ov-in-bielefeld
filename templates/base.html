@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Kino OV Bielefeld{% endblock %}</title>
     <link rel="icon" href="/images/favicon.ico">
+    <link rel="icon" href="/images/logo.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="/images/apple-touch-icon.png"><!-- 180×180 -->
     <style>
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,700;1,9..40,400&family=Playfair+Display:wght@400;700&display=swap');
 
@@ -67,6 +69,13 @@
             color: var(--text-muted);
             font-weight: 400;
             font-size: 0.85em;
+        }
+
+        .filters-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.4rem;
+            align-items: flex-end;
         }
 
         .filters {
@@ -294,6 +303,16 @@
 
         .tag-omu { background: var(--tag-omu); color: #fff; }
         .tag-ov  { background: var(--tag-ov); color: #fff; }
+
+        .imdb-rating {
+            color: var(--accent);
+            font-weight: 500;
+        }
+
+        .rt-score {
+            color: #fa320a;
+            font-weight: 500;
+        }
 
         .cinema-dot {
             display: inline-block;

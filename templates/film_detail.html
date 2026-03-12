@@ -24,6 +24,8 @@
             {% if film.release_year %}{{ film.release_year }}{% endif %}
             {% if film.runtime_minutes %}<span class="separator">·</span> {{ film.runtime_minutes }} min{% endif %}
             {% if film.original_language %}<span class="separator">·</span> Sprache: {{ film.original_language | upper }}{% endif %}
+            {% if film.imdb_rating %}<span class="separator">·</span> <span class="imdb-rating">★ {{ film.imdb_rating }}</span>{% if film.imdb_votes %} <span style="color: var(--text-muted); font-size: 0.8em;">({{ film.imdb_votes | votes_fmt }})</span>{% endif %}{% endif %}
+            {% if film.rt_score is not none and film.rt_score != "" %}<span class="separator">·</span> <span class="rt-score">🍅 {{ film.rt_score }}%</span>{% endif %}
         </div>
 
         <div style="margin-top: 0.8rem; display: flex; gap: 0.5rem;">
@@ -32,6 +34,9 @@
             {% endif %}
             {% if tmdb_url %}
             <a href="{{ tmdb_url }}" target="_blank" rel="noopener" class="filter-btn">TMDb →</a>
+            {% endif %}
+            {% if film.imdb_id %}
+            <a href="{{ film.imdb_id | omdb_url }}" target="_blank" rel="noopener" class="filter-btn">OMDb →</a>
             {% endif %}
         </div>
 

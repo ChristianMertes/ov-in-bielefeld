@@ -15,8 +15,10 @@ from datetime import datetime
 
 from database import (
     get_db, init_db, upsert_film, upsert_showtime,
-    cleanup_old_showtimes, get_new_unnotified_films
+    cleanup_old_showtimes, get_new_unnotified_films,
+    get_films_with_imdb_id, update_film_ratings, update_film_rt_score,
 )
+from ratings_client import fetch_imdb_ratings, fetch_rt_scores
 from scrapers.arthouse import scrape_arthouse
 from scrapers.cinemaxx import scrape_cinemaxx
 from tmdb_client import lookup_film, is_relevant_language
@@ -86,6 +88,31 @@ def run_scrape(notify_callback=None):
         f"Scrape complete: {len(enriched_films)} films written, "
         f"{len(new_films)} new"
     )
+
+    # ── Phase 4: IMDb ratings ──────────────────────────────────────────────
+    with get_db() as db:
+        films_to_rate = get_films_with_imdb_id(db)
+
+    if films_to_rate:
+        imdb_ids = [f["imdb_id"] for f in films_to_rate]
+
+        ratings = fetch_imdb_ratings(imdb_ids)
+        if ratings:
+            with get_db() as db:
+                for film in films_to_rate:
+                    r = ratings.get(film["imdb_id"])
+                    if r:
+                        update_film_ratings(db, film["id"], r["rating"], r["votes"])
+            logger.info(f"IMDb ratings: updated {len(ratings)} of {len(films_to_rate)} films")
+
+        rt_scores = fetch_rt_scores(imdb_ids)
+        if rt_scores:
+            with get_db() as db:
+                for film in films_to_rate:
+                    score = rt_scores.get(film["imdb_id"])
+                    if score is not None:
+                        update_film_rt_score(db, film["id"], score)
+            logger.info(f"RT scores: updated {len(rt_scores)} of {len(films_to_rate)} films")
 
     if notify_callback and new_films:
         for film_id, film_data in new_films:

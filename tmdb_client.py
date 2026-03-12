@@ -190,3 +190,10 @@ def get_tmdb_url(tmdb_id: Optional[int]) -> Optional[str]:
     if not tmdb_id:
         return None
     return f"https://www.themoviedb.org/movie/{tmdb_id}"
+
+
+def get_omdb_url(imdb_id: Optional[str]) -> Optional[str]:
+    """Construct an OMDb URL from an IMDb ID."""
+    if not imdb_id:
+        return None
+    return f"https://www.omdbapi.com/?i={imdb_id}"

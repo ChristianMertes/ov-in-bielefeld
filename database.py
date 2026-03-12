@@ -46,6 +46,9 @@ def init_db():
                 runtime_minutes INTEGER,
                 first_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
                 notified INTEGER NOT NULL DEFAULT 0,
+                imdb_rating REAL,
+                imdb_votes INTEGER,
+                rt_score INTEGER,
                 UNIQUE(title_display)
             );
 
@@ -93,6 +96,9 @@ def init_db():
         for stmt in [
             "ALTER TABLE films ADD COLUMN title_de TEXT",
             "ALTER TABLE tmdb_cache ADD COLUMN title_de TEXT",
+            "ALTER TABLE films ADD COLUMN imdb_rating REAL",
+            "ALTER TABLE films ADD COLUMN imdb_votes INTEGER",
+            "ALTER TABLE films ADD COLUMN rt_score INTEGER",
         ]:
             try:
                 db.execute(stmt)
@@ -209,6 +215,28 @@ def set_tmdb_cache(db: sqlite3.Connection, title_query: str, **kwargs):
     db.execute(
         f"INSERT OR REPLACE INTO tmdb_cache ({col_str}) VALUES ({placeholders})",
         vals
+    )
+
+
+def get_films_with_imdb_id(db: sqlite3.Connection) -> list:
+    """Get all films that have an IMDb ID."""
+    return db.execute(
+        "SELECT id, imdb_id FROM films WHERE imdb_id IS NOT NULL"
+    ).fetchall()
+
+
+def update_film_ratings(db: sqlite3.Connection, film_id: int,
+                        imdb_rating: float, imdb_votes: int):
+    db.execute(
+        "UPDATE films SET imdb_rating = ?, imdb_votes = ? WHERE id = ?",
+        (imdb_rating, imdb_votes, film_id)
+    )
+
+
+def update_film_rt_score(db: sqlite3.Connection, film_id: int, rt_score: int):
+    db.execute(
+        "UPDATE films SET rt_score = ? WHERE id = ?",
+        (rt_score, film_id)
     )
 
 
