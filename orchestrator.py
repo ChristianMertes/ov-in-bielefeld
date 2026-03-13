@@ -8,21 +8,26 @@ Processing happens in three distinct phases to avoid nested SQLite connections:
   Phase 3 – DB writes: single transaction for all film and showtime upserts
 """
 from dotenv import load_dotenv
+
 load_dotenv()
 
 import logging
-from datetime import datetime
 
+import cache
 from database import (
-    get_db, init_db, upsert_film, upsert_showtime,
-    cleanup_old_showtimes, get_new_unnotified_films,
-    get_films_with_imdb_id, update_film_ratings, update_film_rt_score,
+    cleanup_old_showtimes,
+    get_db,
+    get_films_with_imdb_id,
+    init_db,
+    update_film_ratings,
+    update_film_rt_score,
+    upsert_film,
+    upsert_showtime,
 )
 from ratings_client import fetch_imdb_ratings, fetch_rt_scores
 from scrapers.arthouse import scrape_arthouse
 from scrapers.cinemaxx import scrape_cinemaxx
-from tmdb_client import lookup_film, is_relevant_language
-import cache
+from tmdb_client import is_relevant_language, lookup_film
 
 logger = logging.getLogger(__name__)
 

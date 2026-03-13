@@ -4,12 +4,12 @@ The programme page lists all films with their showtimes in a table.
 OmU/OV tags appear as text within showtime links.
 Cinema is identified from the booking URL (lichtwerk vs kamera-filmkunsttheater).
 """
-import re
 import logging
+import re
 from datetime import datetime, timedelta
-from typing import Optional
-from bs4 import BeautifulSoup
+
 import requests
+from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
 
@@ -150,7 +150,7 @@ def _find_film_blocks_fallback(soup: BeautifulSoup) -> list:
     return blocks
 
 
-def _parse_film_block(block) -> Optional[dict]:
+def _parse_film_block(block) -> dict | None:
     """Parse a single film block into a structured dict."""
     # Extract title
     title = None

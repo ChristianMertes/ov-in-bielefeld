@@ -1,14 +1,7 @@
 """Tests for webapp helper/formatting functions."""
 from datetime import datetime, timedelta
 
-import pytest
-
-from webapp import (
-    _next_showtime_label,
-    _format_date_de,
-    _format_time,
-    _format_votes,
-)
+from webapp import _format_date_de, _format_time, _format_votes, _next_showtime_label
 
 # Fixed reference point: Tuesday 2026-03-10 14:00
 NOW = datetime(2026, 3, 10, 14, 0, 0)

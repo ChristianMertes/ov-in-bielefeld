@@ -1,17 +1,10 @@
 """Tests for the Arthouse scraper using a real HTML fixture."""
-import re
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from scrapers.arthouse import (
-    _parse_german_date,
-    _parse_film_block,
-    scrape_arthouse,
-)
-from bs4 import BeautifulSoup
-
+from scrapers.arthouse import _parse_german_date, scrape_arthouse
 
 # ── _parse_german_date ────────────────────────────────────────────────────────
 

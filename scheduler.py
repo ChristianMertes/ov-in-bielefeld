@@ -12,10 +12,10 @@ Schedule:
   - Every 6h on other days: keep data fresh
 """
 from dotenv import load_dotenv
+
 load_dotenv()
 
 import logging
-import os
 from datetime import datetime
 
 from apscheduler.schedulers.blocking import BlockingScheduler
@@ -24,7 +24,7 @@ from apscheduler.triggers.cron import CronTrigger
 import cache
 from log_setup import setup_logging
 from orchestrator import run_scrape
-from telegram_bot import notify_new_film, notify_all_pending
+from telegram_bot import notify_all_pending, notify_new_film
 
 logger = logging.getLogger(__name__)
 

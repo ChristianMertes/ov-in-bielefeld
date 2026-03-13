@@ -24,10 +24,9 @@ establishes the session (no login required).
 
 Cinema ID for Bielefeld: 1336
 """
-import re
 import logging
-from datetime import datetime
-from typing import Optional
+import re
+
 import requests
 
 logger = logging.getLogger(__name__)
@@ -146,7 +145,7 @@ def _fetch_ov_showtimes(http: requests.Session, film_id: str) -> list[dict]:
     return showtimes
 
 
-def _parse_film(film: dict) -> Optional[dict]:
+def _parse_film(film: dict) -> dict | None:
     """Parse a CinemaxX film if it has English/French OV/OmU showings."""
     title_de = (film.get("filmTitle") or "").strip()
     title_orig = (film.get("originalTitle") or "").strip()
@@ -239,7 +238,7 @@ def _clean_title(title: str) -> str:
     return title
 
 
-def _extract_year(date_str: Optional[str]) -> Optional[int]:
+def _extract_year(date_str: str | None) -> int | None:
     if not date_str:
         return None
     match = re.search(r"(\d{4})", date_str)

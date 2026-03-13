@@ -1,23 +1,24 @@
 """Web application for browsing OV/OmU cinema listings in Bielefeld."""
 from dotenv import load_dotenv
+
 load_dotenv()
 
 import logging
 import os
 import time
-from datetime import datetime, date, timedelta
 from collections import defaultdict
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta
 
-from fastapi import FastAPI, Request, Query
+from fastapi import FastAPI, Query, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from database import init_db, get_db, get_upcoming_films, get_film_showtimes, get_film_by_id, get_showtimes_for_films
-from tmdb_client import get_imdb_url, get_tmdb_url, get_omdb_url
-from log_setup import setup_logging
 import cache
+from database import get_db, get_film_by_id, get_film_showtimes, get_showtimes_for_films, get_upcoming_films, init_db
+from log_setup import setup_logging
+from tmdb_client import get_imdb_url, get_omdb_url, get_tmdb_url
 
 _access_log = logging.getLogger("access")
 

@@ -1,6 +1,7 @@
 """Client for fetching film ratings from external APIs."""
 import logging
 import os
+
 import requests
 
 logger = logging.getLogger(__name__)

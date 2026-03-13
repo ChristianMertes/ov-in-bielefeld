@@ -1,15 +1,14 @@
 """Tests for CinemaxX scraper business logic."""
 from scrapers.cinemaxx import (
+    RELEVANT_LANGUAGES,
+    _clean_title,
+    _extract_year,
     _has_language,
     _has_ov_marker,
     _is_omu_attr,
     _parse_film,
     _title_heuristic_ov,
-    _clean_title,
-    _extract_year,
-    RELEVANT_LANGUAGES,
 )
-
 
 # ── _has_language ────────────────────────────────────────────────────────────
 

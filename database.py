@@ -1,9 +1,8 @@
 """Database layer using SQLite."""
-import sqlite3
 import os
-from datetime import datetime, date
+import sqlite3
 from contextlib import contextmanager
-from typing import Optional
+from datetime import datetime
 
 DB_PATH = os.environ.get("KINO_DB_PATH", "kino_ov.db")
 
@@ -276,7 +275,7 @@ def get_showtimes_for_films(db: sqlite3.Connection, film_ids: list[int]) -> dict
     return result
 
 
-def get_film_by_id(db: sqlite3.Connection, film_id: int) -> Optional[sqlite3.Row]:
+def get_film_by_id(db: sqlite3.Connection, film_id: int) -> sqlite3.Row | None:
     return db.execute("SELECT * FROM films WHERE id = ?", (film_id,)).fetchone()
 
 
@@ -291,7 +290,7 @@ def mark_film_notified(db: sqlite3.Connection, film_id: int):
     db.execute("UPDATE films SET notified = 1 WHERE id = ?", (film_id,))
 
 
-def get_tmdb_cache(db: sqlite3.Connection, title_query: str) -> Optional[sqlite3.Row]:
+def get_tmdb_cache(db: sqlite3.Connection, title_query: str) -> sqlite3.Row | None:
     return db.execute(
         "SELECT * FROM tmdb_cache WHERE title_query = ?", (title_query,)
     ).fetchone()

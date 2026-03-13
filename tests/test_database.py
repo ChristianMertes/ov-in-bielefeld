@@ -1,15 +1,7 @@
 """Tests for the database layer."""
 from datetime import datetime, timedelta
 
-import database
-from database import (
-    upsert_film,
-    upsert_showtime,
-    get_upcoming_films,
-    get_film_by_id,
-    get_film_showtimes,
-    cleanup_old_showtimes,
-)
+from database import cleanup_old_showtimes, get_film_by_id, get_upcoming_films, upsert_film, upsert_showtime
 
 
 def _future(days=1):

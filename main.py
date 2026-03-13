@@ -4,10 +4,13 @@ Usage:
     uv run python main.py
 """
 from dotenv import load_dotenv
+
 load_dotenv()
 
 import os
+
 import uvicorn
+
 from log_setup import setup_logging
 
 if __name__ == "__main__":

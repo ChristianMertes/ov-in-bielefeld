@@ -8,13 +8,13 @@ The bot can be run in two modes:
 1. As a standalone long-polling bot (for receiving commands)
 2. As a notification sender (called from the scraper orchestrator)
 """
-import os
 import logging
+import os
 from datetime import datetime
 
 import requests
 
-from database import get_db, get_film_by_id, get_film_showtimes, mark_film_notified, get_new_unnotified_films
+from database import get_db, get_film_by_id, get_film_showtimes, get_new_unnotified_films, mark_film_notified
 from tmdb_client import get_imdb_url
 
 logger = logging.getLogger(__name__)
@@ -65,7 +65,7 @@ def notify_new_film(film_id: int, film_data: dict = None):
         runtime = film["runtime_minutes"]
         imdb_id = film["imdb_id"]
 
-        lines = [f"🎬 <b>Neuer Film im OV-Programm</b>"]
+        lines = ["🎬 <b>Neuer Film im OV-Programm</b>"]
         lines.append("")
         lines.append(f"<b>{_escape_html(title_original)}</b>")
 

@@ -8,10 +8,11 @@ Invalidation is cross-process: the orchestrator touches a sentinel file on the
 shared /data volume after each scrape; the webapp detects the mtime change and
 clears both stores on the next request.
 """
-import brotli
 import os
 import threading
 from pathlib import Path
+
+import brotli
 
 _lock = threading.Lock()
 _store: dict[str, bytes] = {}

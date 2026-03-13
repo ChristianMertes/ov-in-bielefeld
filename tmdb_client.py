@@ -5,10 +5,10 @@ Requires a TMDb API key (free for non-commercial use):
 
 Set the environment variable TMDB_API_KEY.
 """
+import logging
 import os
 import re
-import logging
-from typing import Optional
+
 import requests
 
 from database import get_db, get_tmdb_cache, set_tmdb_cache
@@ -25,7 +25,7 @@ RELEVANT_LANGUAGES = {"en", "fr"}
 EXCLUDE_LANGUAGES = {"de"}
 
 
-def lookup_film(title: str, year: Optional[int] = None) -> Optional[dict]:
+def lookup_film(title: str, year: int | None = None) -> dict | None:
     """Look up a film by its (German) display title on TMDb.
 
     Returns dict with metadata or None if not found/not relevant.
@@ -70,7 +70,7 @@ def _clean_title_for_search(title: str) -> str:
     return title.strip()
 
 
-def _search_tmdb(title: str, year: Optional[int], api_key: str) -> Optional[dict]:
+def _search_tmdb(title: str, year: int | None, api_key: str) -> dict | None:
     """Search TMDb for a film by title. Tries German title first, then original."""
     # Strategy 1: Search in German language context
     result = _tmdb_search_request(title, api_key, language="de-DE", year=year)
@@ -93,8 +93,8 @@ def _search_tmdb(title: str, year: Optional[int], api_key: str) -> Optional[dict
     return None
 
 
-def _tmdb_search_request(title: str, api_key: str, language: Optional[str] = None,
-                         year: Optional[int] = None) -> Optional[dict]:
+def _tmdb_search_request(title: str, api_key: str, language: str | None = None,
+                         year: int | None = None) -> dict | None:
     """Execute a TMDb search API request."""
     params = {
         "api_key": api_key,
@@ -152,7 +152,7 @@ def _tmdb_search_request(title: str, api_key: str, language: Optional[str] = Non
     }
 
 
-def _get_movie_details(tmdb_id: int, api_key: str, language: str = "de-DE") -> Optional[dict]:
+def _get_movie_details(tmdb_id: int, api_key: str, language: str = "de-DE") -> dict | None:
     """Fetch detailed movie info including IMDb ID."""
     try:
         resp = requests.get(
@@ -172,28 +172,28 @@ def is_relevant_language(language_code: str) -> bool:
     return language_code in RELEVANT_LANGUAGES
 
 
-def _extract_year(date_str: Optional[str]) -> Optional[int]:
+def _extract_year(date_str: str | None) -> int | None:
     if not date_str:
         return None
     match = re.search(r"(\d{4})", date_str)
     return int(match.group(1)) if match else None
 
 
-def get_imdb_url(imdb_id: Optional[str]) -> Optional[str]:
+def get_imdb_url(imdb_id: str | None) -> str | None:
     """Construct an IMDb URL from an IMDb ID."""
     if not imdb_id:
         return None
     return f"https://www.imdb.com/title/{imdb_id}/"
 
 
-def get_tmdb_url(tmdb_id: Optional[int]) -> Optional[str]:
+def get_tmdb_url(tmdb_id: int | None) -> str | None:
     """Construct a TMDb URL."""
     if not tmdb_id:
         return None
     return f"https://www.themoviedb.org/movie/{tmdb_id}"
 
 
-def get_omdb_url(imdb_id: Optional[str]) -> Optional[str]:
+def get_omdb_url(imdb_id: str | None) -> str | None:
     """Construct an OMDb URL from an IMDb ID."""
     if not imdb_id:
         return None
