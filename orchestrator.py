@@ -8,6 +8,9 @@ Processing happens in three distinct phases to avoid nested SQLite connections:
   Phase 3 – DB writes: single transaction for all film and showtime upserts
 """
 import logging
+import sqlite3
+from collections.abc import Callable
+from typing import Any
 
 import cache
 from database import (
@@ -28,7 +31,7 @@ from tmdb_client import is_relevant_language, lookup_film
 logger = logging.getLogger(__name__)
 
 
-def run_scrape(notify_callback=None):
+def run_scrape(notify_callback: Callable[[int, dict], None] | None = None) -> dict[str, Any] | None:
     """Run all scrapers, enrich data, update database, and optionally notify."""
     init_db()
 
@@ -51,7 +54,7 @@ def run_scrape(notify_callback=None):
 
     if not all_films:
         logger.warning("No films found from any source!")
-        return
+        return None
 
     # ── Phase 2: TMDb enrichment ───────────────────────────────────────────
     # All lookup_film() calls open/close their own short-lived DB connections
@@ -60,9 +63,9 @@ def run_scrape(notify_callback=None):
     enriched_films = []
     for film_data in all_films:
         try:
-            film_data = _enrich_with_tmdb(film_data)
-            if film_data is not None:
-                enriched_films.append(film_data)
+            enriched = _enrich_with_tmdb(film_data)
+            if enriched is not None:
+                enriched_films.append(enriched)
         except Exception as e:
             title = film_data.get("title_display", "?")
             logger.error(f"TMDb enrichment failed for '{title}': {e}")
@@ -146,7 +149,7 @@ def _enrich_with_tmdb(film_data: dict) -> dict | None:
     original_title = film_data.get("_original_title", "")
     arthouse_year = film_data.get("_arthouse_year")  # From detail page scrape
 
-    def _try_lookup(t, y):
+    def _try_lookup(t: str, y: int | None) -> dict | None:
         """Lookup, then retry with stripped prefix if needed."""
         result = lookup_film(t, y)
         if not result and ": " in t:
@@ -182,7 +185,7 @@ def _enrich_with_tmdb(film_data: dict) -> dict | None:
     return film_data
 
 
-def _write_film(db, film_data: dict) -> tuple[int, bool]:
+def _write_film(db: sqlite3.Connection, film_data: dict) -> tuple[int, bool]:
     """Write a single film and its showtimes to the DB.
 
     Must be called within an open get_db() context.

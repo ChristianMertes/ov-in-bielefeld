@@ -23,7 +23,7 @@ from telegram_bot import notify_all_pending, notify_new_film
 logger = logging.getLogger(__name__)
 
 
-def scrape_and_notify():
+def scrape_and_notify() -> None:
     """Run scraper and send Telegram notifications for new films."""
     logger.info(f"Starting scheduled scrape at {datetime.now().isoformat()}")
     try:
@@ -36,13 +36,13 @@ def scrape_and_notify():
         logger.error(f"Scheduled scrape failed: {e}", exc_info=True)
 
 
-def flush_cache():
+def flush_cache() -> None:
     """Invalidate page cache at midnight so date-relative labels stay correct."""
     logger.info("Midnight cache flush")
     cache.invalidate()
 
 
-def main():
+def main() -> None:
     setup_logging()
 
     scheduler = BlockingScheduler(timezone="Europe/Berlin")

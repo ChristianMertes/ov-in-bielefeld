@@ -9,7 +9,7 @@ import re
 from datetime import datetime, timedelta
 
 import requests
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 
 logger = logging.getLogger(__name__)
 
@@ -150,7 +150,7 @@ def _find_film_blocks_fallback(soup: BeautifulSoup) -> list:
     return blocks
 
 
-def _parse_film_block(block) -> dict | None:
+def _parse_film_block(block: Tag) -> dict | None:
     """Parse a single film block into a structured dict."""
     # Extract title
     title = None
@@ -192,7 +192,7 @@ def _parse_film_block(block) -> dict | None:
     detail_url = None
     detail_link = block.find("a", href=re.compile(r"/filme/[^/]+/$"))
     if detail_link:
-        href = detail_link["href"]
+        href = str(detail_link["href"])
         detail_url = href if href.startswith("http") else BASE_URL + href
 
     # Extract duration
@@ -225,7 +225,7 @@ def _parse_film_block(block) -> dict | None:
     }
 
 
-def _extract_showtimes(block) -> list[dict]:
+def _extract_showtimes(block: Tag) -> list[dict]:
     """Extract all showtimes from a film block."""
     showtimes = []
 
@@ -233,7 +233,7 @@ def _extract_showtimes(block) -> list[dict]:
     booking_links = block.find_all("a", href=re.compile(r"kinoheld\.de"))
 
     for link in booking_links:
-        href = link.get("href", "")
+        href = str(link.get("href", ""))
         link_text = link.get_text(strip=True)
 
         if not link_text or link_text in ("Details anzeigen", "Trailer ansehen"):
@@ -257,7 +257,7 @@ def _extract_showtimes(block) -> list[dict]:
         showtime_dt = _resolve_showtime_date(link, time_str)
 
         # Check for Salon indicator
-        is_salon = bool(link.get("title", "").lower().count("salon"))
+        is_salon = bool(str(link.get("title", "")).lower().count("salon"))
 
         showtimes.append({
             "cinema": cinema,
@@ -270,7 +270,7 @@ def _extract_showtimes(block) -> list[dict]:
     return showtimes
 
 
-def _resolve_showtime_date(link_element, time_str: str) -> str:
+def _resolve_showtime_date(link_element: Tag, time_str: str) -> str:
     """Try to determine the date of a showtime from its table context."""
     # Walk up to find the table
     table = link_element.find_parent("table")
@@ -305,7 +305,7 @@ def _resolve_showtime_date(link_element, time_str: str) -> str:
     else:
         # First row might be the header
         first_row = table.find("tr")
-        header_cells = first_row.find_all(["th", "td"]) if first_row else []
+        header_cells = first_row.find_all(["th", "td"]) if first_row else []  # type: ignore[assignment]
 
     if col_idx < len(header_cells):
         header_text = header_cells[col_idx].get_text(strip=True)
@@ -344,7 +344,7 @@ def _parse_german_date(header_text: str, time_str: str) -> str:
     return dt.isoformat()
 
 
-def _guess_date_from_context(element, time_str: str) -> str:
+def _guess_date_from_context(element: Tag, time_str: str) -> str:
     """Fallback: try to extract date from surrounding text."""
     # Look for a date pattern in nearby text
     parent = element.parent

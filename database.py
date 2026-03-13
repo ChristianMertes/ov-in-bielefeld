@@ -1,5 +1,6 @@
 """Database layer using SQLite."""
 import sqlite3
+from collections.abc import Iterator
 from contextlib import contextmanager, suppress
 from datetime import datetime
 
@@ -17,7 +18,7 @@ def get_connection() -> sqlite3.Connection:
 
 
 @contextmanager
-def get_db():
+def get_db() -> Iterator[sqlite3.Connection]:
     conn = get_connection()
     try:
         yield conn
@@ -29,7 +30,7 @@ def get_db():
         conn.close()
 
 
-def init_db():
+def init_db() -> None:
     with get_db() as db:
         # Fresh-install schema: no UNIQUE(title_display) — identity is managed
         # via partial indexes created below (idx_films_tmdb_id / idx_films_title_year).
@@ -140,7 +141,7 @@ def init_db():
                 db.execute(stmt)
 
 
-def upsert_film(db: sqlite3.Connection, title_display: str, **kwargs) -> tuple[int, bool]:
+def upsert_film(db: sqlite3.Connection, title_display: str, **kwargs) -> tuple[int, bool]:  # noqa: ANN003
     """Insert or update a film. Returns (film_id, is_new).
 
     Identity is resolved in priority order:
@@ -189,7 +190,7 @@ def upsert_film(db: sqlite3.Connection, title_display: str, **kwargs) -> tuple[i
         if updates:
             values.append(film_id)
             db.execute(
-                f"UPDATE films SET {', '.join(updates)} WHERE id = ?",
+                f"UPDATE films SET {', '.join(updates)} WHERE id = ?",  # noqa: S608
                 values,
             )
         return film_id, False
@@ -204,16 +205,17 @@ def upsert_film(db: sqlite3.Connection, title_display: str, **kwargs) -> tuple[i
         placeholders = ", ".join(["?"] * len(vals))
         col_str = ", ".join(cols)
         cursor = db.execute(
-            f"INSERT INTO films ({col_str}) VALUES ({placeholders})",
+            f"INSERT INTO films ({col_str}) VALUES ({placeholders})",  # noqa: S608
             vals,
         )
-        assert cursor.lastrowid is not None
+        if cursor.lastrowid is None:
+            raise RuntimeError("INSERT returned no lastrowid")
         return cursor.lastrowid, True
 
 
 def upsert_showtime(db: sqlite3.Connection, film_id: int, cinema: str,
                     showtime: str, language_tag: str | None = None,
-                    booking_url: str | None = None):
+                    booking_url: str | None = None) -> None:
     """Insert a showtime; on conflict enrich null/empty language_tag and booking_url."""
     db.execute("""
         INSERT INTO showtimes (film_id, cinema, showtime, language_tag, booking_url)
@@ -265,7 +267,7 @@ def get_showtimes_for_films(db: sqlite3.Connection, film_ids: list[int]) -> dict
     now = datetime.now().isoformat()
     placeholders = ",".join("?" * len(film_ids))
     rows = db.execute(
-        f"SELECT * FROM showtimes WHERE film_id IN ({placeholders}) AND showtime >= ?"
+        f"SELECT * FROM showtimes WHERE film_id IN ({placeholders}) AND showtime >= ?"  # noqa: S608
         " ORDER BY showtime",
         [*film_ids, now],
     ).fetchall()
@@ -286,7 +288,7 @@ def get_new_unnotified_films(db: sqlite3.Connection) -> list:
     ).fetchall()
 
 
-def mark_film_notified(db: sqlite3.Connection, film_id: int):
+def mark_film_notified(db: sqlite3.Connection, film_id: int) -> None:
     db.execute("UPDATE films SET notified = 1 WHERE id = ?", (film_id,))
 
 
@@ -296,13 +298,13 @@ def get_tmdb_cache(db: sqlite3.Connection, title_query: str) -> sqlite3.Row | No
     ).fetchone()
 
 
-def set_tmdb_cache(db: sqlite3.Connection, title_query: str, **kwargs):
+def set_tmdb_cache(db: sqlite3.Connection, title_query: str, **kwargs) -> None:  # noqa: ANN003
     cols = ["title_query"] + list(kwargs.keys())
     vals = [title_query] + list(kwargs.values())
     placeholders = ", ".join(["?"] * len(vals))
     col_str = ", ".join(cols)
     db.execute(
-        f"INSERT OR REPLACE INTO tmdb_cache ({col_str}) VALUES ({placeholders})",
+        f"INSERT OR REPLACE INTO tmdb_cache ({col_str}) VALUES ({placeholders})",  # noqa: S608
         vals
     )
 
@@ -315,21 +317,21 @@ def get_films_with_imdb_id(db: sqlite3.Connection) -> list:
 
 
 def update_film_ratings(db: sqlite3.Connection, film_id: int,
-                        imdb_rating: float, imdb_votes: int):
+                        imdb_rating: float, imdb_votes: int) -> None:
     db.execute(
         "UPDATE films SET imdb_rating = ?, imdb_votes = ? WHERE id = ?",
         (imdb_rating, imdb_votes, film_id)
     )
 
 
-def update_film_rt_score(db: sqlite3.Connection, film_id: int, rt_score: int):
+def update_film_rt_score(db: sqlite3.Connection, film_id: int, rt_score: int) -> None:
     db.execute(
         "UPDATE films SET rt_score = ? WHERE id = ?",
         (rt_score, film_id)
     )
 
 
-def cleanup_old_showtimes(db: sqlite3.Connection, days_old: int = 7):
+def cleanup_old_showtimes(db: sqlite3.Connection, days_old: int = 7) -> None:
     """Remove showtimes older than N days."""
     from datetime import timedelta
     cutoff = (datetime.now() - timedelta(days=days_old)).isoformat()

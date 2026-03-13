@@ -2,6 +2,7 @@
 import logging
 import time
 from collections import defaultdict
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from typing import Annotated
@@ -20,7 +21,7 @@ _access_log = logging.getLogger("access")
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     setup_logging()
     # Redirect uvicorn's loggers through our root logger (timestamps, log file).
     # Suppress uvicorn.access specifically — our middleware produces richer logs.
@@ -39,7 +40,7 @@ app = FastAPI(title="Kino OV Bielefeld", lifespan=lifespan)
 
 
 @app.middleware("http")
-async def access_log_middleware(request: Request, call_next):
+async def access_log_middleware(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
     start = time.perf_counter()
     response = await call_next(request)
     duration_ms = (time.perf_counter() - start) * 1000
@@ -98,7 +99,7 @@ def _format_time(dt_str: str) -> str:
         return dt_str
 
 
-def _format_votes(votes) -> str:
+def _format_votes(votes: int | None) -> str:
     """Format vote count as compact string: 1234567 → '1.2M'."""
     if not votes:
         return ""
@@ -171,10 +172,10 @@ LANGUAGE_DISPLAY_NAMES = {
 @app.get("/", response_class=HTMLResponse)
 async def index(
     request: Request,
-    cinema: Annotated[str, Query(description="Filter by cinema")] = None,
-    lang: Annotated[str, Query(description="Filter by language")] = None,
+    cinema: Annotated[str | None, Query(description="Filter by cinema")] = None,
+    lang: Annotated[str | None, Query(description="Filter by language")] = None,
     sort: Annotated[str, Query(description="Sort by: date or title")] = "date",
-):
+) -> Response:
     """Main page showing all upcoming OV/OmU films."""
     now = datetime.now()
     with get_db() as db:
@@ -249,7 +250,7 @@ async def index(
 
 
 @app.get("/film/{film_id}", response_class=HTMLResponse)
-async def film_detail(request: Request, film_id: int):
+async def film_detail(request: Request, film_id: int) -> Response:
     """Detail page for a single film."""
     with get_db() as db:
         film = get_film_by_id(db, film_id)
@@ -295,12 +296,12 @@ async def film_detail(request: Request, film_id: int):
 
 
 @app.get("/health")
-async def health():
+async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
 @app.get("/robots.txt", response_class=PlainTextResponse)
-async def robots_txt():
+async def robots_txt() -> str:
     return (
         "User-agent: *\n"
         "Allow: /\n"
@@ -312,7 +313,7 @@ async def robots_txt():
 
 
 @app.get("/sitemap.xml")
-async def sitemap_xml(request: Request):
+async def sitemap_xml(request: Request) -> Response:
     base = str(request.base_url).rstrip("/")
     urls = [base + "/"]
     with get_db() as db:
@@ -333,7 +334,7 @@ async def sitemap_xml(request: Request):
 
 
 @app.get("/api/films")
-async def api_films(cinema: str | None = None):
+async def api_films(cinema: str | None = None) -> list[dict[str, object]]:
     """JSON API endpoint for external consumption."""
     with get_db() as db:
         films = get_upcoming_films(db, cinema=cinema)
@@ -350,4 +351,4 @@ if __name__ == "__main__":
     import uvicorn
 
     import settings
-    uvicorn.run(app, host="0.0.0.0", port=settings.PORT)
+    uvicorn.run(app, host="0.0.0.0", port=settings.PORT)  # noqa: S104

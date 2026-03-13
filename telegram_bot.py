@@ -48,7 +48,7 @@ def send_message(text: str, parse_mode: str = "HTML",
         return False
 
 
-def notify_new_film(film_id: int, film_data: dict | None = None):
+def notify_new_film(film_id: int, film_data: dict | None = None) -> None:
     """Send a notification about a new film appearing in the programme."""
     with get_db() as db:
         film = get_film_by_id(db, film_id)
@@ -120,7 +120,7 @@ def notify_new_film(film_id: int, film_data: dict | None = None):
             logger.error(f"Failed to notify about: {title_original}")
 
 
-def notify_all_pending():
+def notify_all_pending() -> None:
     """Send notifications for all films not yet notified."""
     with get_db() as db:
         pending = get_new_unnotified_films(db)
@@ -145,7 +145,7 @@ def _escape_html(text: str) -> str:
 # =========================================================================
 # Bot command handling (for interactive use)
 # =========================================================================
-def handle_updates():
+def handle_updates() -> None:
     """Long-polling loop to handle bot commands."""
     if not BOT_TOKEN:
         logger.error("TELEGRAM_BOT_TOKEN not set")
@@ -186,7 +186,7 @@ def handle_updates():
             time.sleep(5)
 
 
-def _process_update(update: dict):
+def _process_update(update: dict) -> None:
     """Process a single Telegram update."""
     message = update.get("message", {})
     text = message.get("text", "")
