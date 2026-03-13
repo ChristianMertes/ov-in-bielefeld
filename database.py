@@ -2,7 +2,7 @@
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager, suppress
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import settings
 
@@ -194,24 +194,23 @@ def upsert_film(db: sqlite3.Connection, title_display: str, **kwargs) -> tuple[i
                 values,
             )
         return film_id, False
-    else:
-        cols = ["title_display"]
-        vals = [title_display]
-        for key in ("title_original", "title_de", "original_language", "tmdb_id", "imdb_id",
-                    "poster_url", "overview", "release_year", "runtime_minutes", "tmdb_popularity"):
-            if key in kwargs and kwargs[key] is not None:
-                cols.append(key)
-                vals.append(kwargs[key])
-        placeholders = ", ".join(["?"] * len(vals))
-        col_str = ", ".join(cols)
-        cursor = db.execute(
-            f"INSERT INTO films ({col_str}) VALUES ({placeholders})",  # noqa: S608
-            vals,
-        )
-        if cursor.lastrowid is None:
-            msg = "INSERT returned no lastrowid"
-            raise RuntimeError(msg)
-        return cursor.lastrowid, True
+    cols = ["title_display"]
+    vals = [title_display]
+    for key in ("title_original", "title_de", "original_language", "tmdb_id", "imdb_id",
+                "poster_url", "overview", "release_year", "runtime_minutes", "tmdb_popularity"):
+        if key in kwargs and kwargs[key] is not None:
+            cols.append(key)
+            vals.append(kwargs[key])
+    placeholders = ", ".join(["?"] * len(vals))
+    col_str = ", ".join(cols)
+    cursor = db.execute(
+        f"INSERT INTO films ({col_str}) VALUES ({placeholders})",  # noqa: S608
+        vals,
+    )
+    if cursor.lastrowid is None:
+        msg = "INSERT returned no lastrowid"
+        raise RuntimeError(msg)
+    return cursor.lastrowid, True
 
 
 def upsert_showtime(db: sqlite3.Connection, film_id: int, cinema: str,
@@ -300,8 +299,8 @@ def get_tmdb_cache(db: sqlite3.Connection, title_query: str) -> sqlite3.Row | No
 
 
 def set_tmdb_cache(db: sqlite3.Connection, title_query: str, **kwargs) -> None:  # noqa: ANN003
-    cols = ["title_query"] + list(kwargs.keys())
-    vals = [title_query] + list(kwargs.values())
+    cols = ["title_query", *list(kwargs.keys())]
+    vals = [title_query, *list(kwargs.values())]
     placeholders = ", ".join(["?"] * len(vals))
     col_str = ", ".join(cols)
     db.execute(
@@ -334,7 +333,6 @@ def update_film_rt_score(db: sqlite3.Connection, film_id: int, rt_score: int) ->
 
 def cleanup_old_showtimes(db: sqlite3.Connection, days_old: int = 7) -> None:
     """Remove showtimes older than N days."""
-    from datetime import timedelta
     cutoff = (datetime.now() - timedelta(days=days_old)).isoformat()
     db.execute("DELETE FROM showtimes WHERE showtime < ?", (cutoff,))
     # Also remove films with no remaining showtimes

@@ -9,12 +9,13 @@ The bot can be run in two modes:
 2. As a notification sender (called from the scraper orchestrator)
 """
 import logging
+import time
 from datetime import datetime
 
 import requests
 
 import settings
-from database import get_db, get_film_by_id, get_film_showtimes, get_new_unnotified_films, mark_film_notified
+from database import get_db, get_film_by_id, get_film_showtimes, get_new_unnotified_films, get_upcoming_films, mark_film_notified
 from tmdb_client import get_imdb_url
 
 logger = logging.getLogger(__name__)
@@ -182,7 +183,6 @@ def handle_updates() -> None:
 
         except requests.RequestException as e:
             logger.error("Polling error: %s", e)
-            import time
             time.sleep(5)
 
 
@@ -208,7 +208,6 @@ def _process_update(update: dict) -> None:
 
     elif text.startswith("/programm"):
         with get_db() as db:
-            from database import get_upcoming_films
             films = get_upcoming_films(db)
 
         if not films:
@@ -225,7 +224,7 @@ def _process_update(update: dict) -> None:
         if len(films) > 15:
             lines.append(f"\n... und {len(films) - 15} weitere.")
 
-        lines.append(f"\n🔗 <a href=\"{WEBAPP_URL}\">Alle Filme ansehen</a>")
+        lines.append(f'\n🔗 <a href="{WEBAPP_URL}">Alle Filme ansehen</a>')
         send_message("\n".join(lines))
 
     elif text.startswith("/info"):

@@ -32,7 +32,7 @@ def scrape_and_notify() -> None:
             logger.info("Scrape done: %d films, %d new", result["total_films"], result["new_films"])
         # Also catch any missed notifications
         notify_all_pending()
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         logger.exception("Scheduled scrape failed: %s", e)
 
 

@@ -132,20 +132,19 @@ def _next_showtime_label(dt_str: str, now: datetime) -> str:
     week_diff = (monday_show - monday_now).days // 7
     if delta == 0:
         return f"heute {time_str}"
-    elif delta == 1:
+    if delta == 1:
         return f"morgen {time_str}"
-    elif delta == 2:
+    if delta == 2:
         return f"übermorgen {time_str}"
-    elif week_diff == 0:
+    if week_diff == 0:
         return f"{weekday} {time_str}"
-    elif week_diff == 1:
+    if week_diff == 1:
         return f"nächste Woche {weekday}"
-    elif week_diff == 2:
+    if week_diff == 2:
         return f"übernächste Woche {weekday}"
-    elif week_diff <= 4:
+    if week_diff <= 4:
         return f"{weekday} in {week_diff} Wochen"
-    else:
-        return f"{show_date.day}. {_MONTHS_DE[show_date.month - 1]}"
+    return f"{show_date.day}. {_MONTHS_DE[show_date.month - 1]}"
 
 
 templates.env.filters["date_de"] = _format_date_de
@@ -318,8 +317,7 @@ async def sitemap_xml(request: Request) -> Response:
     urls = [base + "/"]
     with get_db() as db:
         films = get_upcoming_films(db)
-        for f in films:
-            urls.append(f"{base}/film/{f['id']}")
+        urls.extend(f"{base}/film/{f['id']}" for f in films)
     today = datetime.now().date().isoformat()
     url_entries = "\n".join(
         f"  <url><loc>{u}</loc><lastmod>{today}</lastmod></url>" for u in urls

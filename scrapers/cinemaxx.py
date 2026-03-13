@@ -232,8 +232,7 @@ def _title_heuristic_ov(title: str) -> bool:
 
 def _clean_title(title: str) -> str:
     title = title.strip()
-    title = re.sub(r'^["\s]+|["\s]+$', '', title)
-    return title
+    return re.sub(r'^["\s]+|["\s]+$', "", title)
 
 
 def _extract_year(date_str: str | None) -> int | None:
