@@ -1,5 +1,6 @@
 """Tests for the in-process page cache."""
 import cache
+import settings
 
 
 def _reset():
@@ -13,7 +14,7 @@ def _reset():
 # ── put / get (Brotli) ────────────────────────────────────────────────────────
 
 def test_put_returns_bytes(tmp_path, monkeypatch):
-    monkeypatch.setenv("KINO_DB_PATH", str(tmp_path / "kino.db"))
+    monkeypatch.setattr(settings, "DB_PATH", str(tmp_path / "kino.db"))
     _reset()
     result = cache.put("k", "<html>hello</html>")
     assert isinstance(result, bytes)
@@ -21,21 +22,21 @@ def test_put_returns_bytes(tmp_path, monkeypatch):
 
 
 def test_get_returns_stored_bytes(tmp_path, monkeypatch):
-    monkeypatch.setenv("KINO_DB_PATH", str(tmp_path / "kino.db"))
+    monkeypatch.setattr(settings, "DB_PATH", str(tmp_path / "kino.db"))
     _reset()
     stored = cache.put("page1", "<html>hi</html>")
     assert cache.get("page1") == stored
 
 
 def test_get_miss_returns_none(tmp_path, monkeypatch):
-    monkeypatch.setenv("KINO_DB_PATH", str(tmp_path / "kino.db"))
+    monkeypatch.setattr(settings, "DB_PATH", str(tmp_path / "kino.db"))
     _reset()
     assert cache.get("nonexistent") is None
 
 
 def test_brotli_bytes_decompress_correctly(tmp_path, monkeypatch):
     import brotli as _brotli
-    monkeypatch.setenv("KINO_DB_PATH", str(tmp_path / "kino.db"))
+    monkeypatch.setattr(settings, "DB_PATH", str(tmp_path / "kino.db"))
     _reset()
     html = "<html><body>Test content</body></html>"
     cache.put("page", html)
@@ -46,21 +47,21 @@ def test_brotli_bytes_decompress_correctly(tmp_path, monkeypatch):
 # ── put_plain / get_plain ─────────────────────────────────────────────────────
 
 def test_put_plain_returns_bytes(tmp_path, monkeypatch):
-    monkeypatch.setenv("KINO_DB_PATH", str(tmp_path / "kino.db"))
+    monkeypatch.setattr(settings, "DB_PATH", str(tmp_path / "kino.db"))
     _reset()
     result = cache.put_plain("k", "<html>hello</html>")
     assert isinstance(result, bytes)
 
 
 def test_get_plain_returns_stored_bytes(tmp_path, monkeypatch):
-    monkeypatch.setenv("KINO_DB_PATH", str(tmp_path / "kino.db"))
+    monkeypatch.setattr(settings, "DB_PATH", str(tmp_path / "kino.db"))
     _reset()
     stored = cache.put_plain("page1", "<html>hi</html>")
     assert cache.get_plain("page1") == stored
 
 
 def test_get_plain_content_is_utf8(tmp_path, monkeypatch):
-    monkeypatch.setenv("KINO_DB_PATH", str(tmp_path / "kino.db"))
+    monkeypatch.setattr(settings, "DB_PATH", str(tmp_path / "kino.db"))
     _reset()
     html = "<html>Übermorgen</html>"
     cache.put_plain("page", html)
@@ -68,7 +69,7 @@ def test_get_plain_content_is_utf8(tmp_path, monkeypatch):
 
 
 def test_get_plain_miss_returns_none(tmp_path, monkeypatch):
-    monkeypatch.setenv("KINO_DB_PATH", str(tmp_path / "kino.db"))
+    monkeypatch.setattr(settings, "DB_PATH", str(tmp_path / "kino.db"))
     _reset()
     assert cache.get_plain("nonexistent") is None
 
@@ -76,7 +77,7 @@ def test_get_plain_miss_returns_none(tmp_path, monkeypatch):
 # ── stores are independent ────────────────────────────────────────────────────
 
 def test_brotli_and_plain_stores_are_independent(tmp_path, monkeypatch):
-    monkeypatch.setenv("KINO_DB_PATH", str(tmp_path / "kino.db"))
+    monkeypatch.setattr(settings, "DB_PATH", str(tmp_path / "kino.db"))
     _reset()
     cache.put("page", "<html>compressed</html>")
     assert cache.get_plain("page") is None  # plain store untouched
@@ -88,7 +89,7 @@ def test_brotli_and_plain_stores_are_independent(tmp_path, monkeypatch):
 # ── invalidation ─────────────────────────────────────────────────────────────
 
 def test_invalidate_clears_both_stores(tmp_path, monkeypatch):
-    monkeypatch.setenv("KINO_DB_PATH", str(tmp_path / "kino.db"))
+    monkeypatch.setattr(settings, "DB_PATH", str(tmp_path / "kino.db"))
     _reset()
     cache.put("page", "<html>hi</html>")
     cache.put_plain("page", "<html>hi</html>")
@@ -101,7 +102,7 @@ def test_invalidate_clears_both_stores(tmp_path, monkeypatch):
 
 def test_sentinel_mtime_change_clears_both_stores(tmp_path, monkeypatch):
     """Simulates what happens when the orchestrator touches the sentinel file."""
-    monkeypatch.setenv("KINO_DB_PATH", str(tmp_path / "kino.db"))
+    monkeypatch.setattr(settings, "DB_PATH", str(tmp_path / "kino.db"))
     _reset()
 
     # Prime both caches

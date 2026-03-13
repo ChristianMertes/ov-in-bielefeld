@@ -1,10 +1,11 @@
 """Database layer using SQLite."""
-import os
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime
 
-DB_PATH = os.environ.get("KINO_DB_PATH", "kino_ov.db")
+import settings
+
+DB_PATH = settings.DB_PATH
 
 
 def get_connection() -> sqlite3.Connection:

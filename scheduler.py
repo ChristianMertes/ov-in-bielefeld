@@ -1,7 +1,5 @@
 """Scheduler for periodic scraping.
 
-Load .env before any local imports so env vars are available at module load time.
-
 Runs as a background process alongside the web server.
 Uses APScheduler for cron-like scheduling.
 
@@ -11,10 +9,6 @@ Schedule:
   - Wednesdays every 2h from 08:00-20:00: catch new programme (Kinowoche starts Mi)
   - Every 6h on other days: keep data fresh
 """
-from dotenv import load_dotenv
-
-load_dotenv()
-
 import logging
 from datetime import datetime
 

@@ -5,7 +5,7 @@ Sets up the root logger with two handlers:
   - TimedRotatingFileHandler → logs/kino.log, rotates at midnight,
     compresses rotated files with xz, keeps 30 days of history
 
-Log directory: $KINO_LOG_DIR (default: logs/)
+Log directory: settings.LOG_DIR ($KINO_LOG_DIR, default: logs/)
 """
 import logging
 import lzma
@@ -13,6 +13,8 @@ import os
 import shutil
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
+
+import settings
 
 
 def _xz_namer(name: str) -> str:
@@ -42,7 +44,7 @@ def setup_logging(level: int = logging.INFO) -> None:
     root.addHandler(stream_handler)
 
     # Daily-rotating file, old logs compressed with xz
-    log_dir = Path(os.environ.get("KINO_LOG_DIR", "logs"))
+    log_dir = Path(settings.LOG_DIR)
     log_dir.mkdir(parents=True, exist_ok=True)
 
     file_handler = TimedRotatingFileHandler(

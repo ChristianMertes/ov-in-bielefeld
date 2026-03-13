@@ -1,10 +1,5 @@
 """Web application for browsing OV/OmU cinema listings in Bielefeld."""
-from dotenv import load_dotenv
-
-load_dotenv()
-
 import logging
-import os
 import time
 from collections import defaultdict
 from contextlib import asynccontextmanager
@@ -352,5 +347,5 @@ async def api_films(cinema: str = None):
 
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    import settings
+    uvicorn.run(app, host="0.0.0.0", port=settings.PORT)

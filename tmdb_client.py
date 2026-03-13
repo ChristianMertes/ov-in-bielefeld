@@ -6,11 +6,11 @@ Requires a TMDb API key (free for non-commercial use):
 Set the environment variable TMDB_API_KEY.
 """
 import logging
-import os
 import re
 
 import requests
 
+import settings
 from database import get_db, get_tmdb_cache, set_tmdb_cache
 
 logger = logging.getLogger(__name__)
@@ -30,7 +30,7 @@ def lookup_film(title: str, year: int | None = None) -> dict | None:
 
     Returns dict with metadata or None if not found/not relevant.
     """
-    api_key = os.environ.get("TMDB_API_KEY")
+    api_key = settings.TMDB_API_KEY
     if not api_key:
         logger.warning("TMDB_API_KEY not set. Skipping metadata lookup.")
         return None

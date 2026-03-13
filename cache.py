@@ -8,11 +8,12 @@ Invalidation is cross-process: the orchestrator touches a sentinel file on the
 shared /data volume after each scrape; the webapp detects the mtime change and
 clears both stores on the next request.
 """
-import os
 import threading
 from pathlib import Path
 
 import brotli
+
+import settings
 
 _lock = threading.Lock()
 _store: dict[str, bytes] = {}
@@ -21,7 +22,7 @@ _version: float = -1.0
 
 
 def _sentinel() -> Path:
-    return Path(os.environ.get("KINO_DB_PATH", "kino_ov.db")).parent / ".last_scrape"
+    return Path(settings.DB_PATH).parent / ".last_scrape"
 
 
 def _mtime() -> float:

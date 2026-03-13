@@ -1,8 +1,9 @@
 """Client for fetching film ratings from external APIs."""
 import logging
-import os
 
 import requests
+
+import settings
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,7 @@ def fetch_rt_scores(imdb_ids: list[str]) -> dict[str, int]:
     Returns a dict mapping imdb_id -> rt_score (integer percentage, e.g. 85).
     Films with no RT score in OMDb are omitted from the result.
     """
-    api_key = os.environ.get("OMDB_API_KEY")
+    api_key = settings.OMDB_API_KEY
     if not imdb_ids or not api_key:
         if not api_key:
             logger.warning("OMDB_API_KEY not set, skipping RT scores")

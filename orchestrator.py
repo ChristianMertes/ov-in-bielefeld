@@ -7,10 +7,6 @@ Processing happens in three distinct phases to avoid nested SQLite connections:
              connection to read/write the tmdb_cache table
   Phase 3 – DB writes: single transaction for all film and showtime upserts
 """
-from dotenv import load_dotenv
-
-load_dotenv()
-
 import logging
 
 import cache

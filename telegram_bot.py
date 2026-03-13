@@ -9,19 +9,19 @@ The bot can be run in two modes:
 2. As a notification sender (called from the scraper orchestrator)
 """
 import logging
-import os
 from datetime import datetime
 
 import requests
 
+import settings
 from database import get_db, get_film_by_id, get_film_showtimes, get_new_unnotified_films, mark_film_notified
 from tmdb_client import get_imdb_url
 
 logger = logging.getLogger(__name__)
 
-BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
-CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
-WEBAPP_URL = os.environ.get("WEBAPP_URL", "http://localhost:8000")
+BOT_TOKEN = settings.TELEGRAM_BOT_TOKEN
+CHAT_ID = settings.TELEGRAM_CHAT_ID
+WEBAPP_URL = settings.WEBAPP_URL
 
 
 def send_message(text: str, parse_mode: str = "HTML",
