@@ -227,9 +227,7 @@ def _title_heuristic_ov(title: str) -> bool:
     t = title.lower().strip()
     if t == "sneak ov" or t.endswith(" ov"):
         return True
-    if "(english)" in t or "- english" in t:
-        return True
-    return False
+    return bool("(english)" in t or "- english" in t)
 
 
 def _clean_title(title: str) -> str:

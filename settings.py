@@ -3,8 +3,9 @@
 Import from here instead of reading os.environ directly or calling load_dotenv()
 in individual modules. Python's module cache guarantees load_dotenv() runs once.
 """
-from dotenv import load_dotenv
 import os
+
+from dotenv import load_dotenv
 
 load_dotenv()
 

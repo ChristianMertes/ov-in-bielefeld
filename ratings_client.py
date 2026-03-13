@@ -1,4 +1,5 @@
 """Client for fetching film ratings from external APIs."""
+import contextlib
 import logging
 
 import requests
@@ -63,10 +64,8 @@ def fetch_rt_scores(imdb_ids: list[str]) -> dict[str, int]:
                 continue
             for rating in data.get("Ratings", []):
                 if rating["Source"] == "Rotten Tomatoes":
-                    try:
+                    with contextlib.suppress(ValueError):
                         result[imdb_id] = int(rating["Value"].rstrip("%"))
-                    except ValueError:
-                        pass
                     break
         except requests.RequestException as e:
             logger.error(f"OMDb fetch failed for {imdb_id}: {e}")

@@ -347,5 +347,6 @@ async def api_films(cinema: str | None = None):
 
 if __name__ == "__main__":
     import uvicorn
+
     import settings
     uvicorn.run(app, host="0.0.0.0", port=settings.PORT)

@@ -4,10 +4,10 @@ from datetime import datetime, timedelta
 from database import (
     cleanup_old_showtimes,
     get_film_by_id,
+    get_film_showtimes,
     get_films_with_imdb_id,
     get_new_unnotified_films,
     get_showtimes_for_films,
-    get_film_showtimes,
     get_tmdb_cache,
     get_upcoming_films,
     mark_film_notified,

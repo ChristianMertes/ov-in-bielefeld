@@ -1,6 +1,6 @@
 """Database layer using SQLite."""
 import sqlite3
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from datetime import datetime
 
 import settings
@@ -136,10 +136,8 @@ def init_db():
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_films_title_year"
             " ON films(title_display, release_year) WHERE tmdb_id IS NULL AND release_year IS NOT NULL",
         ]:
-            try:
+            with suppress(Exception):
                 db.execute(stmt)
-            except Exception:
-                pass
 
 
 def upsert_film(db: sqlite3.Connection, title_display: str, **kwargs) -> tuple[int, bool]:
