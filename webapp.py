@@ -332,7 +332,7 @@ async def sitemap_xml(request: Request):
 
 
 @app.get("/api/films")
-async def api_films(cinema: str = None):
+async def api_films(cinema: str | None = None):
     """JSON API endpoint for external consumption."""
     with get_db() as db:
         films = get_upcoming_films(db, cinema=cinema)

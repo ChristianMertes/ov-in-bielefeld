@@ -96,7 +96,7 @@ def _search_tmdb(title: str, year: int | None, api_key: str) -> dict | None:
 def _tmdb_search_request(title: str, api_key: str, language: str | None = None,
                          year: int | None = None) -> dict | None:
     """Execute a TMDb search API request."""
-    params = {
+    params: dict[str, str | int] = {
         "api_key": api_key,
         "query": title,
     }

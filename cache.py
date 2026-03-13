@@ -11,7 +11,7 @@ clears both stores on the next request.
 import threading
 from pathlib import Path
 
-import brotli
+import brotli  # type: ignore[import-untyped]
 
 import settings
 

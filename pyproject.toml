@@ -19,10 +19,14 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=9.0.2",
+    "pytest-mypy>=1.0.1",
+    "pytest-ruff>=0.5",
+    "types-requests>=2.32.4.20260107",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "--ruff --mypy"
 
 [tool.isort]
 line_length = 132
@@ -43,3 +47,7 @@ extend-select = ["E501", "UP"]
 
 [tool.mypy]
 exclude = "tests/fixtures/"
+
+[[tool.mypy.overrides]]
+module = ["brotli", "apscheduler.*"]
+ignore_missing_imports = true

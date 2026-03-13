@@ -48,7 +48,7 @@ def send_message(text: str, parse_mode: str = "HTML",
         return False
 
 
-def notify_new_film(film_id: int, film_data: dict = None):
+def notify_new_film(film_id: int, film_data: dict | None = None):
     """Send a notification about a new film appearing in the programme."""
     with get_db() as db:
         film = get_film_by_id(db, film_id)

@@ -35,7 +35,7 @@ def test_get_miss_returns_none(tmp_path, monkeypatch):
 
 
 def test_brotli_bytes_decompress_correctly(tmp_path, monkeypatch):
-    import brotli as _brotli
+    import brotli as _brotli  # type: ignore[import-untyped]
     monkeypatch.setattr(settings, "DB_PATH", str(tmp_path / "kino.db"))
     _reset()
     html = "<html><body>Test content</body></html>"

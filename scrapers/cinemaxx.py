@@ -76,7 +76,7 @@ def scrape_cinemaxx() -> list[dict]:
     try:
         resp = http.get(f"{API_BASE}/films", params={
             "cinemaId": BIELEFELD_CINEMA_ID,
-            "minEmbargoLevel": 2,
+            "minEmbargoLevel": "2",
             "includesSession": "false",
             "includeSessionAttributes": "true",
         }, timeout=20)

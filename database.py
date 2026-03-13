@@ -209,6 +209,7 @@ def upsert_film(db: sqlite3.Connection, title_display: str, **kwargs) -> tuple[i
             f"INSERT INTO films ({col_str}) VALUES ({placeholders})",
             vals,
         )
+        assert cursor.lastrowid is not None
         return cursor.lastrowid, True
 
 
@@ -225,7 +226,7 @@ def upsert_showtime(db: sqlite3.Connection, film_id: int, cinema: str,
     """, (film_id, cinema, showtime, language_tag, booking_url))
 
 
-def get_upcoming_films(db: sqlite3.Connection, cinema: str = None) -> list:
+def get_upcoming_films(db: sqlite3.Connection, cinema: str | None = None) -> list:
     """Get films with future showtimes, optionally filtered by cinema."""
     now = datetime.now().isoformat()
     query = """

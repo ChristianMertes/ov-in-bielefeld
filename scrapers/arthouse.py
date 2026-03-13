@@ -101,7 +101,7 @@ def _fetch_film_detail(url: str) -> dict:
     resp.encoding = "utf-8"
     text = BeautifulSoup(resp.text, "html.parser").get_text(" ", strip=True)
 
-    result = {}
+    result: dict[str, str | int] = {}
 
     # "Produktion Indonesien 2024" or "Produktion: Frankreich, 2025"
     prod_match = re.search(r"Produktion\s*:?\s*([^\n|·•]{3,60})", text)
