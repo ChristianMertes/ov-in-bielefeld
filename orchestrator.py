@@ -190,11 +190,6 @@ def _write_film(db, film_data: dict) -> tuple[int, bool]:
     title = film_data["title_display"]
     tmdb_data = film_data.get("_tmdb_data")
 
-    existing = db.execute(
-        "SELECT id FROM films WHERE title_display = ?", (title,)
-    ).fetchone()
-    is_new = existing is None
-
     kwargs = {}
     if tmdb_data:
         kwargs.update({
@@ -221,7 +216,7 @@ def _write_film(db, film_data: dict) -> tuple[int, bool]:
         if film_data.get("_poster_url"):
             kwargs["poster_url"] = film_data["_poster_url"]
 
-    film_id = upsert_film(db, title, **kwargs)
+    film_id, is_new = upsert_film(db, title, **kwargs)
 
     for st in film_data.get("showtimes", []):
         if st.get("_placeholder"):

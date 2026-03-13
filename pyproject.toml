@@ -3,7 +3,7 @@ name = "ov-in-bielefeld"
 version = "0.1.0"
 description = "Small website to show upcoming movies in either French or English in Bielefeld."
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.10"
 dependencies = [
     "apscheduler>=3.11.2",
     "brotli>=1.1.0",
@@ -12,8 +12,7 @@ dependencies = [
     "jinja2>=3.1.6",
     "lxml>=6.0.2",
     "python-dotenv>=1.2.2",
-    "python-telegram-bot>=22.6",
-    "requests>=2.32.5",
+"requests>=2.32.5",
     "uvicorn[standard]>=0.41.0",
 ]
 

@@ -60,7 +60,7 @@ uv run python scheduler.py
 uv run pytest
 ```
 
-79 tests covering the scraper parsing logic (including a real HTML fixture from the arthouse site), OV/language detection, date-label formatting, and the database layer. Runs in under a second.
+90 tests covering the scraper parsing logic (including a real HTML fixture from the arthouse site), OV/language detection, date-label formatting, the in-process cache, and the database layer. Runs in under a second.
 
 ## Deployment (Hetzner VPS)
 
@@ -128,9 +128,10 @@ ov-in-bielefeld/
 │   └── cinemaxx.py     # CinemaxX (two-step REST API)
 ├── templates/          # Jinja2 HTML templates
 ├── static/             # CSS, assets
-├── tests/              # pytest suite (79 tests)
+├── tests/              # pytest suite (90 tests)
 │   ├── fixtures/       # Real HTML fixture from arthouse site (xz-compressed)
 │   ├── test_arthouse.py
+│   ├── test_cache.py
 │   ├── test_cinemaxx.py
 │   ├── test_webapp_helpers.py
 │   └── test_database.py

@@ -14,7 +14,7 @@ from fastapi.responses import HTMLResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from database import init_db, get_db, get_upcoming_films, get_film_showtimes, get_film_by_id
+from database import init_db, get_db, get_upcoming_films, get_film_showtimes, get_film_by_id, get_showtimes_for_films
 from tmdb_client import get_imdb_url, get_tmdb_url, get_omdb_url
 from log_setup import setup_logging
 import cache
@@ -155,6 +155,10 @@ templates.env.filters["time_hm"] = _format_time
 templates.env.filters["votes_fmt"] = _format_votes
 
 
+def _supports_brotli(request: Request) -> bool:
+    return "br" in request.headers.get("Accept-Encoding", "")
+
+
 CINEMA_DISPLAY_NAMES = {
     "lichtwerk": "Lichtwerk",
     "kamera": "Kamera",
@@ -178,25 +182,24 @@ async def index(
     now = datetime.now()
     with get_db() as db:
         films_raw = get_upcoming_films(db, cinema=cinema)
+        showtimes_by_film = get_showtimes_for_films(db, [f["id"] for f in films_raw])
 
         films = []
         for f in films_raw:
             film_dict = dict(f)
-            # Get all showtimes for this film
-            showtimes = get_film_showtimes(db, f["id"])
+            showtimes = showtimes_by_film.get(f["id"], [])
 
-            # Group showtimes by date and cinema
+            # Group showtimes by date
             by_date = defaultdict(list)
             for st in showtimes:
                 try:
-                    dt = datetime.fromisoformat(st["showtime"])
-                    date_key = dt.date().isoformat()
+                    date_key = datetime.fromisoformat(st["showtime"]).date().isoformat()
                 except (ValueError, TypeError):
                     date_key = "unknown"
-                by_date[date_key].append(dict(st))
+                by_date[date_key].append(st)
 
             film_dict["showtimes_by_date"] = dict(sorted(by_date.items()))
-            film_dict["showtimes_list"] = [dict(st) for st in showtimes]
+            film_dict["showtimes_list"] = showtimes
             film_dict["cinema_list"] = (
                 f["cinemas"].split(",") if f["cinemas"] else []
             )
@@ -221,13 +224,13 @@ async def index(
         films.sort(key=lambda f: f.get("tmdb_popularity") or 0, reverse=True)
 
     cache_key = f"index:{cinema or ''}:{lang or ''}:{sort}"
-    cached = cache.get(cache_key)
+    brotli_ok = _supports_brotli(request)
+    cached = cache.get(cache_key) if brotli_ok else cache.get_plain(cache_key)
     if cached:
-        return Response(
-            content=cached,
-            media_type="text/html; charset=utf-8",
-            headers={"Content-Encoding": "br", "Vary": "Accept-Encoding"},
-        )
+        headers = {"Vary": "Accept-Encoding"}
+        if brotli_ok:
+            headers["Content-Encoding"] = "br"
+        return Response(content=cached, media_type="text/html; charset=utf-8", headers=headers)
 
     html = templates.get_template("index.html").render({
         "request": request,
@@ -239,12 +242,13 @@ async def index(
         "language_names": LANGUAGE_DISPLAY_NAMES,
         "now": now,
     })
-    compressed = cache.put(cache_key, html)
-    return Response(
-        content=compressed,
-        media_type="text/html; charset=utf-8",
-        headers={"Content-Encoding": "br", "Vary": "Accept-Encoding"},
-    )
+    if brotli_ok:
+        content = cache.put(cache_key, html)
+        headers = {"Content-Encoding": "br", "Vary": "Accept-Encoding"}
+    else:
+        content = cache.put_plain(cache_key, html)
+        headers = {"Vary": "Accept-Encoding"}
+    return Response(content=content, media_type="text/html; charset=utf-8", headers=headers)
 
 
 @app.get("/film/{film_id}", response_class=HTMLResponse)
@@ -268,13 +272,13 @@ async def film_detail(request: Request, film_id: int):
             by_date[date_key].append(dict(st))
 
     cache_key = f"film:{film_id}"
-    cached = cache.get(cache_key)
+    brotli_ok = _supports_brotli(request)
+    cached = cache.get(cache_key) if brotli_ok else cache.get_plain(cache_key)
     if cached:
-        return Response(
-            content=cached,
-            media_type="text/html; charset=utf-8",
-            headers={"Content-Encoding": "br", "Vary": "Accept-Encoding"},
-        )
+        headers = {"Vary": "Accept-Encoding"}
+        if brotli_ok:
+            headers["Content-Encoding"] = "br"
+        return Response(content=cached, media_type="text/html; charset=utf-8", headers=headers)
 
     html = templates.get_template("film_detail.html").render({
         "request": request,
@@ -284,12 +288,13 @@ async def film_detail(request: Request, film_id: int):
         "imdb_url": get_imdb_url(film["imdb_id"]),
         "tmdb_url": get_tmdb_url(film["tmdb_id"]),
     })
-    compressed = cache.put(cache_key, html)
-    return Response(
-        content=compressed,
-        media_type="text/html; charset=utf-8",
-        headers={"Content-Encoding": "br", "Vary": "Accept-Encoding"},
-    )
+    if brotli_ok:
+        content = cache.put(cache_key, html)
+        headers = {"Content-Encoding": "br", "Vary": "Accept-Encoding"}
+    else:
+        content = cache.put_plain(cache_key, html)
+        headers = {"Vary": "Accept-Encoding"}
+    return Response(content=content, media_type="text/html; charset=utf-8", headers=headers)
 
 
 @app.get("/health")
@@ -335,11 +340,11 @@ async def api_films(cinema: str = None):
     """JSON API endpoint for external consumption."""
     with get_db() as db:
         films = get_upcoming_films(db, cinema=cinema)
+        showtimes_by_film = get_showtimes_for_films(db, [f["id"] for f in films])
         result = []
         for f in films:
             film_dict = dict(f)
-            showtimes = get_film_showtimes(db, f["id"])
-            film_dict["showtimes"] = [dict(st) for st in showtimes]
+            film_dict["showtimes"] = showtimes_by_film.get(f["id"], [])
             result.append(film_dict)
     return result
 
