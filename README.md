@@ -2,6 +2,8 @@
 
 Aggregates original-version (OV/OmU) film screenings in English and French from cinemas in Bielefeld, Germany, and displays them in a compact web overview. Sends Telegram notifications when new films appear in the programme.
 
+Deployed to https://ov-in-bielefeld.de/. 
+
 ## Sources
 
 |Cinema        |Method                                     |Status |
