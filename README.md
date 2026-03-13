@@ -27,7 +27,8 @@ Aggregates original-version (OV/OmU) film screenings in English and French from 
 
 - [uv](https://docs.astral.sh/uv/getting-started/installation/) (Python package manager)
 - [TMDb API key](https://www.themoviedb.org/settings/api) (free)
-- [Telegram bot token](https://t.me/BotFather) (optional, for notifications)
+- [OMDb API key](https://www.omdbapi.com/apikey.aspx) (optional, free, for Rotten Tomato scores)
+- [Telegram bot token](https://t.me/BotFather) (optional, free, for notifications)
 
 ### Setup
 
