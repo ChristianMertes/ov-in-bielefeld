@@ -6,6 +6,7 @@ Runs as a background process alongside the web server.
 Uses APScheduler for cron-like scheduling.
 
 Schedule:
+  - Daily at 00:00: cache invalidation (today/tomorrow labels go stale at midnight)
   - Daily at 06:00: full scrape
   - Wednesdays every 2h from 08:00-20:00: catch new programme (Kinowoche starts Mi)
   - Every 6h on other days: keep data fresh
@@ -20,6 +21,7 @@ from datetime import datetime
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 
+import cache
 from log_setup import setup_logging
 from orchestrator import run_scrape
 from telegram_bot import notify_new_film, notify_all_pending
@@ -40,10 +42,24 @@ def scrape_and_notify():
         logger.error(f"Scheduled scrape failed: {e}", exc_info=True)
 
 
+def flush_cache():
+    """Invalidate page cache at midnight so date-relative labels stay correct."""
+    logger.info("Midnight cache flush")
+    cache.invalidate()
+
+
 def main():
     setup_logging()
 
     scheduler = BlockingScheduler(timezone="Europe/Berlin")
+
+    # Midnight: flush cache so "heute/morgen" labels are correct after day rollover
+    scheduler.add_job(
+        flush_cache,
+        CronTrigger(hour=0, minute=0),
+        id="midnight_cache_flush",
+        name="Midnight cache flush",
+    )
 
     # Daily at 06:00
     scheduler.add_job(

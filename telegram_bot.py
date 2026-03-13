@@ -152,11 +152,23 @@ def handle_updates():
         return
 
     logger.info("Starting Telegram bot polling...")
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
+
+    # Drain any updates that arrived while the bot was offline so we don't
+    # replay old commands on every restart.
     offset = 0
+    try:
+        resp = requests.get(url, params={"timeout": 0}, timeout=5)
+        if resp.ok:
+            pending = resp.json().get("result", [])
+            if pending:
+                offset = pending[-1]["update_id"] + 1
+                logger.info(f"Skipped {len(pending)} stale updates on startup")
+    except requests.RequestException as e:
+        logger.warning(f"Could not drain pending updates on startup: {e}")
 
     while True:
         try:
-            url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
             resp = requests.get(url, params={
                 "offset": offset,
                 "timeout": 30,
@@ -226,9 +238,6 @@ def _process_update(update: dict):
 
 
 if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-    )
-    # Run in interactive mode
+    from log_setup import setup_logging
+    setup_logging()
     handle_updates()
