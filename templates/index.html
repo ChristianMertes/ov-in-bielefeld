@@ -63,7 +63,7 @@
             </div>
 
             <div class="showtimes-section">
-                {% for cinema_key, cinema_showtimes in film.showtimes_list | groupby("cinema") %}
+                {% for cinema_key, cinema_showtimes in film.showtimes_list | sort(attribute="cinema") | groupby("cinema") %}
                 <div class="cinema-group">
                     <span class="cinema-label {{ cinema_key }}">{{ cinema_names.get(cinema_key, cinema_key) }}</span>
                     <div class="chips">
