@@ -14,3 +14,6 @@ wheels/
 
 # DB
 kino_ov.db
+
+# Logs
+logs/

@@ -238,10 +238,8 @@ def _write_film(db, film_data: dict) -> tuple[int, bool]:
 
 
 if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-    )
+    from log_setup import setup_logging
+    setup_logging()
     result = run_scrape()
     if result:
         print(f"\nResults: {result['total_films']} films, {result['new_films']} new")

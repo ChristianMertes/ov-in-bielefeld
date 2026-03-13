@@ -20,6 +20,7 @@ from datetime import datetime
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 
+from log_setup import setup_logging
 from orchestrator import run_scrape
 from telegram_bot import notify_new_film, notify_all_pending
 
@@ -40,10 +41,7 @@ def scrape_and_notify():
 
 
 def main():
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-    )
+    setup_logging()
 
     scheduler = BlockingScheduler(timezone="Europe/Berlin")
 

@@ -14,11 +14,13 @@ from fastapi.templating import Jinja2Templates
 
 from database import init_db, get_db, get_upcoming_films, get_film_showtimes, get_film_by_id
 from tmdb_client import get_imdb_url, get_tmdb_url, get_omdb_url
+from log_setup import setup_logging
 import cache
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    setup_logging()
     init_db()
     yield
 
