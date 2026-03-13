@@ -14,6 +14,7 @@ from fastapi.templating import Jinja2Templates
 
 from database import init_db, get_db, get_upcoming_films, get_film_showtimes, get_film_by_id
 from tmdb_client import get_imdb_url, get_tmdb_url, get_omdb_url
+import cache
 
 
 @asynccontextmanager
@@ -171,7 +172,16 @@ async def index(
     elif sort == "popularity":
         films.sort(key=lambda f: f.get("tmdb_popularity") or 0, reverse=True)
 
-    return templates.TemplateResponse("index.html", {
+    cache_key = f"index:{cinema or ''}:{lang or ''}:{sort}"
+    cached = cache.get(cache_key)
+    if cached:
+        return Response(
+            content=cached,
+            media_type="text/html; charset=utf-8",
+            headers={"Content-Encoding": "gzip", "Vary": "Accept-Encoding"},
+        )
+
+    html = templates.get_template("index.html").render({
         "request": request,
         "films": films,
         "cinema_filter": cinema,
@@ -181,6 +191,12 @@ async def index(
         "language_names": LANGUAGE_DISPLAY_NAMES,
         "now": now,
     })
+    compressed = cache.put(cache_key, html)
+    return Response(
+        content=compressed,
+        media_type="text/html; charset=utf-8",
+        headers={"Content-Encoding": "gzip", "Vary": "Accept-Encoding"},
+    )
 
 
 @app.get("/film/{film_id}", response_class=HTMLResponse)
@@ -203,7 +219,16 @@ async def film_detail(request: Request, film_id: int):
                 date_key = "unknown"
             by_date[date_key].append(dict(st))
 
-    return templates.TemplateResponse("film_detail.html", {
+    cache_key = f"film:{film_id}"
+    cached = cache.get(cache_key)
+    if cached:
+        return Response(
+            content=cached,
+            media_type="text/html; charset=utf-8",
+            headers={"Content-Encoding": "gzip", "Vary": "Accept-Encoding"},
+        )
+
+    html = templates.get_template("film_detail.html").render({
         "request": request,
         "film": dict(film),
         "showtimes_by_date": dict(sorted(by_date.items())),
@@ -211,6 +236,12 @@ async def film_detail(request: Request, film_id: int):
         "imdb_url": get_imdb_url(film["imdb_id"]),
         "tmdb_url": get_tmdb_url(film["tmdb_id"]),
     })
+    compressed = cache.put(cache_key, html)
+    return Response(
+        content=compressed,
+        media_type="text/html; charset=utf-8",
+        headers={"Content-Encoding": "gzip", "Vary": "Accept-Encoding"},
+    )
 
 
 @app.get("/health")

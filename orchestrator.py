@@ -22,6 +22,7 @@ from ratings_client import fetch_imdb_ratings, fetch_rt_scores
 from scrapers.arthouse import scrape_arthouse
 from scrapers.cinemaxx import scrape_cinemaxx
 from tmdb_client import lookup_film, is_relevant_language
+import cache
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +121,8 @@ def run_scrape(notify_callback=None):
                 notify_callback(film_id, film_data)
             except Exception as e:
                 logger.error(f"Notification failed for '{film_data['title_display']}': {e}")
+
+    cache.invalidate()
 
     return {
         "total_films": len(enriched_films),
