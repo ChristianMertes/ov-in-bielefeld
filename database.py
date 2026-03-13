@@ -64,17 +64,6 @@ def init_db():
                 UNIQUE(film_id, cinema, showtime)
             );
 
-            CREATE TABLE IF NOT EXISTS scrape_log (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                source TEXT NOT NULL,
-                started_at TEXT NOT NULL,
-                finished_at TEXT,
-                films_found INTEGER DEFAULT 0,
-                showtimes_found INTEGER DEFAULT 0,
-                status TEXT DEFAULT 'running',
-                error_message TEXT
-            );
-
             CREATE TABLE IF NOT EXISTS tmdb_cache (
                 title_query TEXT PRIMARY KEY,
                 tmdb_id INTEGER,

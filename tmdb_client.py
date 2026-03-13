@@ -15,7 +15,6 @@ from database import get_db, get_tmdb_cache, set_tmdb_cache
 
 logger = logging.getLogger(__name__)
 
-TMDB_API_KEY = os.environ.get("TMDB_API_KEY")
 TMDB_BASE_URL = "https://api.themoviedb.org/3"
 TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/w500"
 
@@ -31,7 +30,8 @@ def lookup_film(title: str, year: Optional[int] = None) -> Optional[dict]:
 
     Returns dict with metadata or None if not found/not relevant.
     """
-    if not TMDB_API_KEY:
+    api_key = os.environ.get("TMDB_API_KEY")
+    if not api_key:
         logger.warning("TMDB_API_KEY not set. Skipping metadata lookup.")
         return None
 
@@ -47,7 +47,7 @@ def lookup_film(title: str, year: Optional[int] = None) -> Optional[dict]:
     # Clean up title for search
     search_title = _clean_title_for_search(title)
 
-    result = _search_tmdb(search_title, year)
+    result = _search_tmdb(search_title, year, api_key)
 
     # Cache the result (even if None, to avoid repeated lookups)
     with get_db() as db:
@@ -70,22 +70,22 @@ def _clean_title_for_search(title: str) -> str:
     return title.strip()
 
 
-def _search_tmdb(title: str, year: Optional[int] = None) -> Optional[dict]:
+def _search_tmdb(title: str, year: Optional[int], api_key: str) -> Optional[dict]:
     """Search TMDb for a film by title. Tries German title first, then original."""
     # Strategy 1: Search in German language context
-    result = _tmdb_search_request(title, language="de-DE", year=year)
+    result = _tmdb_search_request(title, api_key, language="de-DE", year=year)
     if result:
         return result
 
     # Strategy 2: Search without language restriction (might catch original titles)
-    result = _tmdb_search_request(title, language="en-US", year=year)
+    result = _tmdb_search_request(title, api_key, language="en-US", year=year)
     if result:
         return result
 
     # Strategy 3: If title looks like it might be the original title
     # (no German articles, contains English/French words), try direct search
     if re.search(r"[A-Za-z]{3,}", title) and not re.search(r"[äöüÄÖÜß]", title):
-        result = _tmdb_search_request(title, language=None, year=year)
+        result = _tmdb_search_request(title, api_key, language=None, year=year)
         if result:
             return result
 
@@ -93,11 +93,11 @@ def _search_tmdb(title: str, year: Optional[int] = None) -> Optional[dict]:
     return None
 
 
-def _tmdb_search_request(title: str, language: Optional[str] = None,
+def _tmdb_search_request(title: str, api_key: str, language: Optional[str] = None,
                          year: Optional[int] = None) -> Optional[dict]:
     """Execute a TMDb search API request."""
     params = {
-        "api_key": TMDB_API_KEY,
+        "api_key": api_key,
         "query": title,
     }
     if language:
@@ -127,7 +127,7 @@ def _tmdb_search_request(title: str, language: Optional[str] = None,
     original_language = movie.get("original_language", "")
 
     # Get more details (including IMDb ID, runtime, and German title)
-    details = _get_movie_details(movie["id"], language="de-DE")
+    details = _get_movie_details(movie["id"], api_key, language="de-DE")
 
     tmdb_id = movie["id"]
     poster_path = movie.get("poster_path")
@@ -152,12 +152,12 @@ def _tmdb_search_request(title: str, language: Optional[str] = None,
     }
 
 
-def _get_movie_details(tmdb_id: int, language: str = "de-DE") -> Optional[dict]:
+def _get_movie_details(tmdb_id: int, api_key: str, language: str = "de-DE") -> Optional[dict]:
     """Fetch detailed movie info including IMDb ID."""
     try:
         resp = requests.get(
             f"{TMDB_BASE_URL}/movie/{tmdb_id}",
-            params={"api_key": TMDB_API_KEY, "language": language},
+            params={"api_key": api_key, "language": language},
             timeout=10
         )
         resp.raise_for_status()
