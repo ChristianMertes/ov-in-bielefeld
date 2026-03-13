@@ -12,12 +12,13 @@ RUN uv sync --frozen --no-dev
 # Copy application code
 COPY . .
 
-# SQLite data directory + unprivileged user
-RUN mkdir -p /data && \
+# SQLite data directory, log directory + unprivileged user
+RUN mkdir -p /data /app/logs && \
     useradd -u 1000 -m app && \
     chown -R app /app /data
 
 ENV KINO_DB_PATH=/data/kino_ov.db
+ENV KINO_LOG_DIR=/app/logs
 
 USER app
 
