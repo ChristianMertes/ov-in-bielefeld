@@ -25,15 +25,15 @@ logger = logging.getLogger(__name__)
 
 def scrape_and_notify() -> None:
     """Run scraper and send Telegram notifications for new films."""
-    logger.info(f"Starting scheduled scrape at {datetime.now().isoformat()}")
+    logger.info("Starting scheduled scrape at %s", datetime.now().isoformat())
     try:
         result = run_scrape(notify_callback=notify_new_film)
         if result:
-            logger.info(f"Scrape done: {result['total_films']} films, {result['new_films']} new")
+            logger.info("Scrape done: %d films, %d new", result["total_films"], result["new_films"])
         # Also catch any missed notifications
         notify_all_pending()
-    except Exception as e:
-        logger.error(f"Scheduled scrape failed: {e}", exc_info=True)
+    except Exception as e:  # noqa: BLE001
+        logger.exception("Scheduled scrape failed: %s", e)
 
 
 def flush_cache() -> None:
@@ -86,7 +86,7 @@ def main() -> None:
 
     logger.info("Scheduler started. Jobs:")
     for job in scheduler.get_jobs():
-        logger.info(f"  {job.name}: {job.trigger}")
+        logger.info("  %s: %s", job.name, job.trigger)
 
     try:
         scheduler.start()

@@ -44,7 +44,7 @@ def send_message(text: str, parse_mode: str = "HTML",
         resp.raise_for_status()
         return True
     except requests.RequestException as e:
-        logger.error(f"Telegram send failed: {e}")
+        logger.error("Telegram send failed: %s", e)
         return False
 
 
@@ -115,9 +115,9 @@ def notify_new_film(film_id: int, film_data: dict | None = None) -> None:
 
         if send_message(message):
             mark_film_notified(db, film_id)
-            logger.info(f"Notified about: {title_original}")
+            logger.info("Notified about: %s", title_original)
         else:
-            logger.error(f"Failed to notify about: {title_original}")
+            logger.error("Failed to notify about: %s", title_original)
 
 
 def notify_all_pending() -> None:
@@ -129,7 +129,7 @@ def notify_all_pending() -> None:
         logger.info("No pending notifications")
         return
 
-    logger.info(f"Sending {len(pending)} pending notifications")
+    logger.info("Sending %d pending notifications", len(pending))
     for film in pending:
         notify_new_film(film["id"])
 
@@ -163,9 +163,9 @@ def handle_updates() -> None:
             pending = resp.json().get("result", [])
             if pending:
                 offset = pending[-1]["update_id"] + 1
-                logger.info(f"Skipped {len(pending)} stale updates on startup")
+                logger.info("Skipped %d stale updates on startup", len(pending))
     except requests.RequestException as e:
-        logger.warning(f"Could not drain pending updates on startup: {e}")
+        logger.warning("Could not drain pending updates on startup: %s", e)
 
     while True:
         try:
@@ -181,7 +181,7 @@ def handle_updates() -> None:
                 _process_update(update)
 
         except requests.RequestException as e:
-            logger.error(f"Polling error: {e}")
+            logger.error("Polling error: %s", e)
             import time
             time.sleep(5)
 

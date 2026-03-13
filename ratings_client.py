@@ -34,7 +34,7 @@ def fetch_imdb_ratings(imdb_ids: list[str]) -> dict[str, dict]:
                 result[imdb_id] = {"rating": rating, "votes": item.get("votes")}
         return result
     except requests.RequestException as e:
-        logger.error(f"Failed to fetch IMDb ratings: {e}")
+        logger.error("Failed to fetch IMDb ratings: %s", e)
         return {}
 
 
@@ -68,6 +68,6 @@ def fetch_rt_scores(imdb_ids: list[str]) -> dict[str, int]:
                         result[imdb_id] = int(rating["Value"].rstrip("%"))
                     break
         except requests.RequestException as e:
-            logger.error(f"OMDb fetch failed for {imdb_id}: {e}")
+            logger.error("OMDb fetch failed for %s: %s", imdb_id, e)
 
     return result

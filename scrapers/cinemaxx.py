@@ -61,9 +61,9 @@ def _get_session() -> requests.Session:
     session.headers.update(HEADERS)
     try:
         session.get(CINEMA_PAGE, timeout=15)
-        logger.debug(f"Session established, cookies: {list(session.cookies.keys())}")
+        logger.debug("Session established, cookies: %s", list(session.cookies.keys()))
     except requests.RequestException as e:
-        logger.warning(f"Could not establish session: {e}")
+        logger.warning("Could not establish session: %s", e)
     return session
 
 
@@ -83,7 +83,7 @@ def scrape_cinemaxx() -> list[dict]:
         resp.raise_for_status()
         data = resp.json()
     except requests.RequestException as e:
-        logger.error(f"CinemaxX API failed: {e}")
+        logger.error("CinemaxX API failed: %s", e)
         return []
 
     all_films = data.get("result", [])
@@ -91,7 +91,7 @@ def scrape_cinemaxx() -> list[dict]:
         logger.warning("No films returned from CinemaxX API")
         return []
 
-    logger.info(f"CinemaxX API returned {len(all_films)} films for Bielefeld")
+    logger.info("CinemaxX API returned %d films for Bielefeld", len(all_films))
 
     result = []
     for film in all_films:
@@ -101,7 +101,7 @@ def scrape_cinemaxx() -> list[dict]:
             parsed["showtimes"] = _fetch_ov_showtimes(http, film_id)
             result.append(parsed)
 
-    logger.info(f"CinemaxX: {len(result)} English/French OV/OmU films")
+    logger.info("CinemaxX: %d English/French OV/OmU films", len(result))
     return result
 
 
@@ -116,7 +116,7 @@ def _fetch_ov_showtimes(http: requests.Session, film_id: str) -> list[dict]:
         resp.raise_for_status()
         groups = resp.json().get("result", [])
     except requests.RequestException as e:
-        logger.warning(f"Could not fetch showtimes for {film_id}: {e}")
+        logger.warning("Could not fetch showtimes for %s: %s", film_id, e)
         return []
 
     showtimes = []

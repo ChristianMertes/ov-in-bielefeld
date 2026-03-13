@@ -209,7 +209,8 @@ def upsert_film(db: sqlite3.Connection, title_display: str, **kwargs) -> tuple[i
             vals,
         )
         if cursor.lastrowid is None:
-            raise RuntimeError("INSERT returned no lastrowid")
+            msg = "INSERT returned no lastrowid"
+            raise RuntimeError(msg)
         return cursor.lastrowid, True
 
 

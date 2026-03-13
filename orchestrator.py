@@ -41,16 +41,16 @@ def run_scrape(notify_callback: Callable[[int, dict], None] | None = None) -> di
     try:
         arthouse_films = scrape_arthouse()
         all_films.extend(arthouse_films)
-        logger.info(f"Arthouse: {len(arthouse_films)} OV/OmU films")
-    except Exception as e:
-        logger.error(f"Arthouse scrape failed: {e}")
+        logger.info("Arthouse: %d OV/OmU films", len(arthouse_films))
+    except Exception as e:  # noqa: BLE001
+        logger.error("Arthouse scrape failed: %s", e)
 
     try:
         cinemaxx_films = scrape_cinemaxx()
         all_films.extend(cinemaxx_films)
-        logger.info(f"CinemaxX: {len(cinemaxx_films)} OV/OmU films")
-    except Exception as e:
-        logger.error(f"CinemaxX scrape failed: {e}")
+        logger.info("CinemaxX: %d OV/OmU films", len(cinemaxx_films))
+    except Exception as e:  # noqa: BLE001
+        logger.error("CinemaxX scrape failed: %s", e)
 
     if not all_films:
         logger.warning("No films found from any source!")
@@ -66,14 +66,11 @@ def run_scrape(notify_callback: Callable[[int, dict], None] | None = None) -> di
             enriched = _enrich_with_tmdb(film_data)
             if enriched is not None:
                 enriched_films.append(enriched)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             title = film_data.get("title_display", "?")
-            logger.error(f"TMDb enrichment failed for '{title}': {e}")
+            logger.error("TMDb enrichment failed for '%s': %s", title, e)
 
-    logger.info(
-        f"TMDb: {len(all_films)} films checked, "
-        f"{len(enriched_films)} passed language filter"
-    )
+    logger.info("TMDb: %d films checked, %d passed language filter", len(all_films), len(enriched_films))
 
     # ── Phase 3: DB writes ─────────────────────────────────────────────────
     new_films = []
@@ -83,16 +80,13 @@ def run_scrape(notify_callback: Callable[[int, dict], None] | None = None) -> di
                 film_id, is_new = _write_film(db, film_data)
                 if is_new:
                     new_films.append((film_id, film_data))
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 title = film_data.get("title_display", "?")
-                logger.error(f"DB write failed for '{title}': {e}")
+                logger.error("DB write failed for '%s': %s", title, e)
 
         cleanup_old_showtimes(db)
 
-    logger.info(
-        f"Scrape complete: {len(enriched_films)} films written, "
-        f"{len(new_films)} new"
-    )
+    logger.info("Scrape complete: %d films written, %d new", len(enriched_films), len(new_films))
 
     # ── Phase 4: IMDb ratings ──────────────────────────────────────────────
     with get_db() as db:
@@ -108,7 +102,7 @@ def run_scrape(notify_callback: Callable[[int, dict], None] | None = None) -> di
                     r = ratings.get(film["imdb_id"])
                     if r:
                         update_film_ratings(db, film["id"], r["rating"], r["votes"])
-            logger.info(f"IMDb ratings: updated {len(ratings)} of {len(films_to_rate)} films")
+            logger.info("IMDb ratings: updated %d of %d films", len(ratings), len(films_to_rate))
 
         rt_scores = fetch_rt_scores(imdb_ids)
         if rt_scores:
@@ -117,14 +111,14 @@ def run_scrape(notify_callback: Callable[[int, dict], None] | None = None) -> di
                     score = rt_scores.get(film["imdb_id"])
                     if score is not None:
                         update_film_rt_score(db, film["id"], score)
-            logger.info(f"RT scores: updated {len(rt_scores)} of {len(films_to_rate)} films")
+            logger.info("RT scores: updated %d of %d films", len(rt_scores), len(films_to_rate))
 
     if notify_callback and new_films:
         for film_id, film_data in new_films:
             try:
                 notify_callback(film_id, film_data)
-            except Exception as e:
-                logger.error(f"Notification failed for '{film_data['title_display']}': {e}")
+            except Exception as e:  # noqa: BLE001
+                logger.error("Notification failed for '%s': %s", film_data["title_display"], e)
 
     cache.invalidate()
 
@@ -168,7 +162,7 @@ def _enrich_with_tmdb(film_data: dict) -> dict | None:
         tmdb_year = tmdb_data.get("release_year")
         if tmdb_year and abs(tmdb_year - arthouse_year) > 3:
             logger.debug(
-                f"Year mismatch for '{title}': TMDb={tmdb_year}, arthouse={arthouse_year} — retrying"
+                "Year mismatch for '%s': TMDb=%s, arthouse=%s — retrying", title, tmdb_year, arthouse_year
             )
             retry = _try_lookup(title, arthouse_year)
             tmdb_data = retry  # May be None if correct film not on TMDb
@@ -176,9 +170,7 @@ def _enrich_with_tmdb(film_data: dict) -> dict | None:
     if tmdb_data:
         orig_lang = tmdb_data.get("original_language", "")
         if orig_lang and not is_relevant_language(orig_lang):
-            logger.debug(
-                f"Skipping '{title}': original language '{orig_lang}' not EN/FR"
-            )
+            logger.debug("Skipping '%s': original language '%s' not EN/FR", title, orig_lang)
             return None
 
     film_data["_tmdb_data"] = tmdb_data

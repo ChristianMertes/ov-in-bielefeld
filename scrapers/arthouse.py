@@ -70,11 +70,11 @@ def scrape_arthouse() -> list[dict]:
             film = _parse_film_block(block)
             if film and film["showtimes"]:
                 films.append(film)
-        except Exception as e:
-            logger.warning(f"Error parsing film block: {e}")
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Error parsing film block: %s", e)
             continue
 
-    logger.info(f"Found {len(films)} films with OV/OmU showtimes")
+    logger.info("Found %d films with OV/OmU showtimes", len(films))
 
     # Fetch detail pages for films missing a release year (improves TMDb disambiguation)
     for film in films:
@@ -88,8 +88,8 @@ def scrape_arthouse() -> list[dict]:
                     film["_director"] = detail["director"]
                 if detail.get("country"):
                     film["_production_country"] = detail["country"]
-            except Exception as e:
-                logger.debug(f"Detail fetch failed for '{film['title_display']}': {e}")
+            except Exception as e:  # noqa: BLE001
+                logger.debug("Detail fetch failed for '%s': %s", film["title_display"], e)
 
     return films
 

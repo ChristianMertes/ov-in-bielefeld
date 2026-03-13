@@ -89,7 +89,7 @@ def _search_tmdb(title: str, year: int | None, api_key: str) -> dict | None:
         if result:
             return result
 
-    logger.debug(f"No TMDb match for '{title}' (year={year})")
+    logger.debug("No TMDb match for '%s' (year=%s)", title, year)
     return None
 
 
@@ -114,7 +114,7 @@ def _tmdb_search_request(title: str, api_key: str, language: str | None = None,
         resp.raise_for_status()
         data = resp.json()
     except requests.RequestException as e:
-        logger.error(f"TMDb API error: {e}")
+        logger.error("TMDb API error: %s", e)
         return None
 
     results = data.get("results", [])
@@ -163,7 +163,7 @@ def _get_movie_details(tmdb_id: int, api_key: str, language: str = "de-DE") -> d
         resp.raise_for_status()
         return resp.json()
     except requests.RequestException as e:
-        logger.error(f"TMDb detail fetch error for ID {tmdb_id}: {e}")
+        logger.error("TMDb detail fetch error for ID %s: %s", tmdb_id, e)
         return None
 
 

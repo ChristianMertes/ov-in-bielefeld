@@ -55,10 +55,17 @@ exclude = "tests/fixtures"
 line-length = 132
 
 [tool.ruff.lint]
-extend-select = ["E", "F", "UP", "B", "SIM", "I", "FAST", "S", "ANN"]
+extend-select = ["E", "F", "UP", "B", "SIM", "I", "FAST", "S", "ANN", "ASYNC", "BLE", "A", "COM818", "C4", "DTZ", "EM", "EXE", "FA", "FIX", "ISC", "ICN", "LOG", "G", "PIE", "T20"]
+# DTZ: the app stores all times as naive local datetimes (Bielefeld cinema listings);
+# adding tzinfo everywhere would break the ISO-string DB format for no practical benefit.
+extend-ignore = ["DTZ"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S", "ANN"]
+# T201: print() calls in __main__ blocks are intentional diagnostic entry points
+"orchestrator.py" = ["T201"]
+"scrapers/arthouse.py" = ["T201"]
+"scrapers/cinemaxx.py" = ["T201"]
 
 [tool.mypy]
 exclude = "tests/fixtures/"
