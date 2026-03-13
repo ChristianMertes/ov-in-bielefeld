@@ -17,10 +17,20 @@ from tmdb_client import get_imdb_url, get_tmdb_url, get_omdb_url
 from log_setup import setup_logging
 import cache
 
+import logging as _logging
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_logging()
+    # Uvicorn configures its own handlers with propagate=False, so its log
+    # records never reach our formatter. Clear those handlers and re-enable
+    # propagation so all uvicorn output (including access logs) gets our
+    # timestamped format and goes to the log file.
+    for _name in ("uvicorn", "uvicorn.access", "uvicorn.error"):
+        _uv = _logging.getLogger(_name)
+        _uv.handlers.clear()
+        _uv.propagate = True
     init_db()
     yield
 

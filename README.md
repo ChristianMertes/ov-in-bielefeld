@@ -74,8 +74,11 @@ nano .env  # TMDB_API_KEY, TELEGRAM_*, WEBAPP_URL setzen
 # Starten
 docker compose up -d
 
-# Logs prüfen
+# Logs live (stdout beider Container)
 docker compose logs -f
+
+# Persistente Log-Datei (rotiert täglich, alte Logs mit xz komprimiert)
+docker compose exec web tail -f /app/logs/kino.log
 ```
 
 ### Reverse Proxy (Caddy)
@@ -134,4 +137,5 @@ ov-in-bielefeld/
 | `TELEGRAM_CHAT_ID` | optional | Eigene Chat-ID (z.B. via @userinfobot) |
 | `WEBAPP_URL` | optional | Öffentliche URL für Telegram-Links (default: http://localhost:8000) |
 | `KINO_DB_PATH` | optional | Pfad zur SQLite-DB (default: kino_ov.db) |
+| `KINO_LOG_DIR` | optional | Log-Verzeichnis (default: logs/, im Docker: /app/logs) |
 | `PORT` | optional | Web-Port (default: 8000) |
