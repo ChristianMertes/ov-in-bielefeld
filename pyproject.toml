@@ -19,6 +19,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=9.0.2",
+    "pytest-cov>=7.0.0",
     "pytest-mypy>=1.0.1",
     "pytest-ruff>=0.5",
     "types-requests>=2.32.4.20260107",
@@ -26,7 +27,17 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--ruff --mypy"
+addopts = "--ruff --mypy --cov --cov-branch --cov-report=term-missing"
+
+[tool.coverage.run]
+source = ["."]
+omit = ["tests/*", "main.py", "scheduler.py"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+]
 
 [tool.isort]
 line_length = 132
