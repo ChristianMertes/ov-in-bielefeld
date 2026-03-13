@@ -4,11 +4,11 @@ Aggregates original-version (OV/OmU) film screenings in English and French from 
 
 ## Sources
 
-| Cinema | Method | Status |
-|--------|--------|--------|
-| **Lichtwerk** | HTML scraping (arthousekinos-bielefeld.de) | ✅ |
-| **Kamera** | HTML scraping (same site) | ✅ |
-| **CinemaxX** | REST API (/api/microservice/showings/) | ✅ |
+|Cinema        |Method                                     |Status |
+| ------------ | ----------------------------------------- | ----- |
+|**Lichtwerk** |HTML scraping (arthousekinos-bielefeld.de) |✅      |
+|**Kamera**    |HTML scraping (same site)                  |✅      |
+|**CinemaxX**  |REST API (/api/microservice/showings/)     |✅      |
 
 ## Features
 
@@ -140,22 +140,22 @@ ov-in-bielefeld/
 
 ## Scraping schedule
 
-| When | Frequency | Why |
-|------|-----------|-----|
-| Daily 00:00 | once | Flush page cache (date labels go stale at midnight) |
-| Daily 06:00 | once | Refresh base data |
-| Wednesdays 08:00–20:00 | every 2h | New Kinowoche programme starts Wednesday |
-| Other days | every 6h | Catch late additions and changes |
+|When                   |Frequency |Why                                                 |
+| --------------------- | -------- | -------------------------------------------------- |
+|Daily 00:00            |once      |Flush page cache (date labels go stale at midnight) |
+|Daily 06:00            |once      |Refresh base data                                   |
+|Wednesdays 08:00–20:00 |every 2h  |New Kinowoche programme starts Wednesday            |
+|Other days             |every 6h  |Catch late additions and changes                    |
 
 ## Environment variables (.env)
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `TMDB_API_KEY` | ✅ | TMDb API key (free) |
-| `OMDB_API_KEY` | optional | OMDb API key for Rotten Tomatoes scores (free, 1000 req/day) |
-| `TELEGRAM_BOT_TOKEN` | optional | Bot token from @BotFather |
-| `TELEGRAM_CHAT_ID` | optional | Your chat ID (use @userinfobot to find it) |
-| `WEBAPP_URL` | optional | Public URL for Telegram links (default: http://localhost:8000) |
-| `KINO_DB_PATH` | optional | Path to SQLite database (default: kino_ov.db) |
-| `KINO_LOG_DIR` | optional | Log directory (default: logs/, in Docker: /app/logs) |
-| `PORT` | optional | Web server port (default: 8000) |
+|Variable             |Required |Description                                                    |
+| ------------------- | ------- | ------------------------------------------------------------- |
+|`TMDB_API_KEY`       |✅       |TMDb API key (free)                                            |
+|`OMDB_API_KEY`       |optional |OMDb API key for Rotten Tomatoes scores (free, 1000 req/day)   |
+|`TELEGRAM_BOT_TOKEN` |optional |Bot token from @BotFather                                      |
+|`TELEGRAM_CHAT_ID`   |optional |Your chat ID (use @userinfobot to find it)                     |
+|`WEBAPP_URL`         |optional |Public URL for Telegram links (default: http://localhost:8000) |
+|`KINO_DB_PATH`       |optional |Path to SQLite database (default: kino_ov.db)                  |
+|`KINO_LOG_DIR`       |optional |Log directory (default: logs/, in Docker: /app/logs)           |
+|`PORT`               |optional |Web server port (default: 8000)                                |
