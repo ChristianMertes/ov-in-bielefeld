@@ -1,11 +1,11 @@
-"""In-process page cache storing pre-compressed (gzip) HTML bytes.
+"""In-process page cache storing pre-compressed (Brotli) HTML bytes.
 
 Cache entries are keyed by route + query parameters. Invalidation is
 cross-process: the orchestrator touches a sentinel file on the shared
 /data volume after each scrape; the webapp detects the mtime change and
 clears the store on the next request.
 """
-import gzip
+import brotli
 import os
 import threading
 from pathlib import Path
@@ -27,7 +27,7 @@ def _mtime() -> float:
 
 
 def get(key: str) -> bytes | None:
-    """Return cached gzip bytes for key, or None if stale/absent."""
+    """Return cached Brotli bytes for key, or None if stale/absent."""
     global _store, _version
     v = _mtime()
     with _lock:
@@ -39,7 +39,7 @@ def get(key: str) -> bytes | None:
 
 def put(key: str, html: str) -> bytes:
     """Compress html, store under key, and return the compressed bytes."""
-    compressed = gzip.compress(html.encode(), compresslevel=6)
+    compressed = brotli.compress(html.encode(), quality=6)
     with _lock:
         _store[key] = compressed
     return compressed

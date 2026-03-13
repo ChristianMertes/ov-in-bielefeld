@@ -178,7 +178,7 @@ async def index(
         return Response(
             content=cached,
             media_type="text/html; charset=utf-8",
-            headers={"Content-Encoding": "gzip", "Vary": "Accept-Encoding"},
+            headers={"Content-Encoding": "br", "Vary": "Accept-Encoding"},
         )
 
     html = templates.get_template("index.html").render({
@@ -195,7 +195,7 @@ async def index(
     return Response(
         content=compressed,
         media_type="text/html; charset=utf-8",
-        headers={"Content-Encoding": "gzip", "Vary": "Accept-Encoding"},
+        headers={"Content-Encoding": "br", "Vary": "Accept-Encoding"},
     )
 
 
@@ -225,7 +225,7 @@ async def film_detail(request: Request, film_id: int):
         return Response(
             content=cached,
             media_type="text/html; charset=utf-8",
-            headers={"Content-Encoding": "gzip", "Vary": "Accept-Encoding"},
+            headers={"Content-Encoding": "br", "Vary": "Accept-Encoding"},
         )
 
     html = templates.get_template("film_detail.html").render({
@@ -240,7 +240,7 @@ async def film_detail(request: Request, film_id: int):
     return Response(
         content=compressed,
         media_type="text/html; charset=utf-8",
-        headers={"Content-Encoding": "gzip", "Vary": "Accept-Encoding"},
+        headers={"Content-Encoding": "br", "Vary": "Accept-Encoding"},
     )
 
 
