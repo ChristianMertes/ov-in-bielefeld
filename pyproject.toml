@@ -1,7 +1,7 @@
 [project]
 name = "ov-in-bielefeld"
 version = "0.1.0"
-description = "Add your description here"
+description = "Small website to show upcoming movies in either French or English in Bielefeld."
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [

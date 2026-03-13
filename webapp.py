@@ -8,7 +8,7 @@ from collections import defaultdict
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Query
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -211,6 +211,38 @@ async def film_detail(request: Request, film_id: int):
         "imdb_url": get_imdb_url(film["imdb_id"]),
         "tmdb_url": get_tmdb_url(film["tmdb_id"]),
     })
+
+
+@app.get("/robots.txt", response_class=PlainTextResponse)
+async def robots_txt():
+    return (
+        "User-agent: *\n"
+        "Allow: /\n"
+        "Disallow: /api/\n"
+        "\n"
+        "Sitemap: https://ov-in-bielefeld.de/sitemap.xml\n"
+    )
+
+
+@app.get("/sitemap.xml")
+async def sitemap_xml(request: Request):
+    base = str(request.base_url).rstrip("/")
+    urls = [base + "/"]
+    with get_db() as db:
+        films = get_upcoming_films(db)
+        for f in films:
+            urls.append(f"{base}/film/{f['id']}")
+    today = datetime.now().date().isoformat()
+    url_entries = "\n".join(
+        f"  <url><loc>{u}</loc><lastmod>{today}</lastmod></url>" for u in urls
+    )
+    xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        f"{url_entries}\n"
+        "</urlset>"
+    )
+    return Response(content=xml, media_type="application/xml")
 
 
 @app.get("/api/films")
