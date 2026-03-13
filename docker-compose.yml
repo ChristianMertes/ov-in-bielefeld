@@ -5,6 +5,7 @@ services:
       - "${PORT:-8000}:8000"
     volumes:
       - db-data:/data
+      - log-data:/app/logs
     env_file: .env
     restart: unless-stopped
 
@@ -12,6 +13,7 @@ services:
     build: .
     volumes:
       - db-data:/data
+      - log-data:/app/logs
     env_file: .env
     restart: unless-stopped
     command: uv run python scheduler.py
@@ -21,3 +23,4 @@ services:
 
 volumes:
   db-data:
+  log-data:
