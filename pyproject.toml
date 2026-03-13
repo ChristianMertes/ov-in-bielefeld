@@ -55,7 +55,7 @@ exclude = "tests/fixtures"
 line-length = 132
 
 [tool.ruff.lint]
-extend-select = ["E", "F", "UP", "B", "SIM", "I"]
+extend-select = ["E", "F", "UP", "B", "SIM", "I", "FAST"]
 
 [tool.mypy]
 exclude = "tests/fixtures/"

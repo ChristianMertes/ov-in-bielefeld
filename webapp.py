@@ -4,6 +4,7 @@ import time
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
+from typing import Annotated
 
 from fastapi import FastAPI, Query, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse, Response
@@ -170,9 +171,9 @@ LANGUAGE_DISPLAY_NAMES = {
 @app.get("/", response_class=HTMLResponse)
 async def index(
     request: Request,
-    cinema: str = Query(None, description="Filter by cinema"),
-    lang: str = Query(None, description="Filter by language"),
-    sort: str = Query("date", description="Sort by: date or title"),
+    cinema: Annotated[str, Query(description="Filter by cinema")] = None,
+    lang: Annotated[str, Query(description="Filter by language")] = None,
+    sort: Annotated[str, Query(description="Sort by: date or title")] = "date",
 ):
     """Main page showing all upcoming OV/OmU films."""
     now = datetime.now()
