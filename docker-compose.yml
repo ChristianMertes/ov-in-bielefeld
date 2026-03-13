@@ -15,6 +15,9 @@ services:
     env_file: .env
     restart: unless-stopped
     command: uv run python scheduler.py
+    depends_on:
+      web:
+        condition: service_healthy
 
 volumes:
   db-data:
