@@ -213,12 +213,18 @@ async def film_detail(request: Request, film_id: int):
     })
 
 
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
+
 @app.get("/robots.txt", response_class=PlainTextResponse)
 async def robots_txt():
     return (
         "User-agent: *\n"
         "Allow: /\n"
         "Disallow: /api/\n"
+        "Disallow: /health\n"
         "\n"
         "Sitemap: https://ov-in-bielefeld.de/sitemap.xml\n"
     )
