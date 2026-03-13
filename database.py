@@ -184,7 +184,7 @@ def upsert_film(db: sqlite3.Connection, title_display: str, **kwargs) -> tuple[i
         updates = []
         values = []
         for key in ("title_original", "title_de", "original_language", "tmdb_id", "imdb_id",
-                     "poster_url", "overview", "release_year", "runtime_minutes", "tmdb_popularity"):
+                    "poster_url", "overview", "release_year", "runtime_minutes", "tmdb_popularity"):
             if key in kwargs and kwargs[key] is not None:
                 updates.append(f"{key} = ?")
                 values.append(kwargs[key])
@@ -199,7 +199,7 @@ def upsert_film(db: sqlite3.Connection, title_display: str, **kwargs) -> tuple[i
         cols = ["title_display"]
         vals = [title_display]
         for key in ("title_original", "title_de", "original_language", "tmdb_id", "imdb_id",
-                     "poster_url", "overview", "release_year", "runtime_minutes", "tmdb_popularity"):
+                    "poster_url", "overview", "release_year", "runtime_minutes", "tmdb_popularity"):
             if key in kwargs and kwargs[key] is not None:
                 cols.append(key)
                 vals.append(kwargs[key])
