@@ -2,7 +2,9 @@
 from dotenv import load_dotenv
 load_dotenv()
 
+import logging
 import os
+import time
 from datetime import datetime, date, timedelta
 from collections import defaultdict
 from contextlib import asynccontextmanager
@@ -17,25 +19,59 @@ from tmdb_client import get_imdb_url, get_tmdb_url, get_omdb_url
 from log_setup import setup_logging
 import cache
 
-import logging as _logging
+_access_log = logging.getLogger("access")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_logging()
-    # Uvicorn configures its own handlers with propagate=False, so its log
-    # records never reach our formatter. Clear those handlers and re-enable
-    # propagation so all uvicorn output (including access logs) gets our
-    # timestamped format and goes to the log file.
-    for _name in ("uvicorn", "uvicorn.access", "uvicorn.error"):
-        _uv = _logging.getLogger(_name)
+    # Redirect uvicorn's loggers through our root logger (timestamps, log file).
+    # Suppress uvicorn.access specifically — our middleware produces richer logs.
+    for _name in ("uvicorn", "uvicorn.error"):
+        _uv = logging.getLogger(_name)
         _uv.handlers.clear()
         _uv.propagate = True
+    _uv_access = logging.getLogger("uvicorn.access")
+    _uv_access.handlers.clear()
+    _uv_access.propagate = False  # silenced; middleware takes over
     init_db()
     yield
 
 
 app = FastAPI(title="Kino OV Bielefeld", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def access_log_middleware(request: Request, call_next):
+    start = time.perf_counter()
+    response = await call_next(request)
+    duration_ms = (time.perf_counter() - start) * 1000
+
+    # Real client IP: X-Forwarded-For is set by Caddy (and most reverse proxies)
+    forwarded_for = request.headers.get("X-Forwarded-For")
+    client_ip = (
+        forwarded_for.split(",")[0].strip()
+        if forwarded_for
+        else (request.client.host if request.client else "-")
+    )
+
+    path = request.url.path
+    if request.url.query:
+        path += f"?{request.url.query}"
+
+    _access_log.info(
+        '%s "%s %s" %d %.0fms ref="%s" ua="%s"',
+        client_ip,
+        request.method,
+        path,
+        response.status_code,
+        duration_ms,
+        request.headers.get("Referer", "-"),
+        request.headers.get("User-Agent", "-"),
+    )
+    return response
+
+
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/images", StaticFiles(directory="images"), name="images")
 templates = Jinja2Templates(directory="templates")
