@@ -65,6 +65,16 @@
             color: var(--accent);
         }
 
+        .site-tagline {
+            font-size: 0.82rem;
+            color: var(--text-muted);
+            margin: 0.15rem 0 0;
+        }
+
+        .site-tagline a {
+            color: var(--text-muted);
+        }
+
         h1 span {
             color: var(--text-muted);
             font-weight: 400;
@@ -483,6 +493,7 @@
     <header>
         <div class="container">
             <h1>Kino OV <span>Bielefeld</span></h1>
+            <p class="site-tagline">Anstehende Kinofilme in Originalversion in Bielefeld — bisher erfasst: Englisch und Französisch. <a href="https://github.com/ChristianMertes/ov-in-bielefeld" target="_blank" rel="noopener">Projekt auf GitHub</a></p>
             {% block header_extra %}{% endblock %}
         </div>
     </header>
