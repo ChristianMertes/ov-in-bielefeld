@@ -1,141 +1,161 @@
 # Kino OV Bielefeld
 
-Aggregiert OV/OmU-Vorstellungen (Englisch & Französisch) aus den Bielefelder Kinos und zeigt sie in einer kompakten Web-Übersicht. Benachrichtigt per Telegram über neue Filme.
+Aggregates original-version (OV/OmU) film screenings in English and French from cinemas in Bielefeld, Germany, and displays them in a compact web overview. Sends Telegram notifications when new films appear in the programme.
 
-## Quellen
+## Sources
 
-| Kino | Methode | Status |
-|------|---------|--------|
-| **Lichtwerk** | HTML-Scraping (arthousekinos-bielefeld.de) | ✅ |
-| **Kamera** | HTML-Scraping (gleiche Seite) | ✅ |
+| Cinema | Method | Status |
+|--------|--------|--------|
+| **Lichtwerk** | HTML scraping (arthousekinos-bielefeld.de) | ✅ |
+| **Kamera** | HTML scraping (same site) | ✅ |
 | **CinemaxX** | REST API (/api/microservice/showings/) | ✅ |
 
 ## Features
 
-- Scraping mehrmals täglich, häufiger mittwochs (Kinowoche-Start)
-- TMDb-Integration: Originaltitel, Poster, IMDb-Links, Laufzeit, deutscher Titel
-- Sprachfilterung via TMDb: nur Englisch/Französisch, keine deutschen/japanischen/etc. Filme
-- Arthouse-Detailseiten für bessere Jahres-Disambiguierung bei TMDb
-- Telegram-Bot: Benachrichtigung bei neuen Filmen + `/programm`-Befehl
-- Web-Übersicht mit Filter nach Kino und Sortierung nach Datum/Titel
+- Scrapes multiple times daily, more frequently on Wednesdays (when the new Kinowoche programme starts)
+- TMDb integration: original title, poster, IMDb/RT ratings, runtime
+- Language filtering via TMDb: only English and French films, no German, Japanese, etc.
+- Arthouse detail pages fetched for better year disambiguation on TMDb
+- Telegram bot: notification for new films + `/programm` command
+- Web UI with cinema filter and sorting by date, title, rating, or popularity
+- In-process Brotli page cache, invalidated after each scrape and at midnight (date-relative labels)
+- Daily-rotating log files, old logs compressed with xz
 
-## Schnellstart (lokal)
+## Quick start (local)
 
-### Voraussetzungen
+### Prerequisites
 
-- [uv](https://docs.astral.sh/uv/getting-started/installation/) (Python-Packagemanager)
-- [TMDb API Key](https://www.themoviedb.org/settings/api) (kostenlos)
-- [Telegram Bot Token](https://t.me/BotFather) (optional, für Benachrichtigungen)
+- [uv](https://docs.astral.sh/uv/getting-started/installation/) (Python package manager)
+- [TMDb API key](https://www.themoviedb.org/settings/api) (free)
+- [Telegram bot token](https://t.me/BotFather) (optional, for notifications)
 
 ### Setup
 
 ```bash
 git clone <repo-url> && cd ov-in-bielefeld
 cp .env.example .env
-# .env editieren: TMDB_API_KEY (und optional TELEGRAM_* Keys) setzen
+# Edit .env: set TMDB_API_KEY (and optionally TELEGRAM_* keys)
 
 uv sync
 ```
 
-### Starten
+### Run
 
 ```bash
-# Erster Scrape (befüllt die Datenbank):
+# Initial scrape (populates the database):
 uv run python orchestrator.py
 
-# Web-App (mit Auto-Reload):
+# Web app (with auto-reload):
 uv run python main.py
 # → http://localhost:8000
 
-# Scheduler (Hintergrund-Scraping + Telegram-Notifications):
+# Scheduler (background scraping + Telegram notifications):
 uv run python scheduler.py
 ```
 
-## Deployment (Hetzner VPS)
-
-Empfohlene Variante: **Hetzner Cloud CAX11** (ARM, ~€3.29/Monat) + Docker Compose.
-
-### Setup auf dem Server
+### Tests
 
 ```bash
-# Docker installieren (falls noch nicht vorhanden)
+uv run pytest
+```
+
+79 tests covering the scraper parsing logic (including a real HTML fixture from the arthouse site), OV/language detection, date-label formatting, and the database layer. Runs in under a second.
+
+## Deployment (Hetzner VPS)
+
+Recommended setup: **Hetzner Cloud CAX11** (ARM, ~€3.29/month) + Docker Compose.
+
+### Server setup
+
+```bash
+# Install Docker
 curl -fsSL https://get.docker.com | sh
 
-# Neuen User anlegen (empfohlen)
+# Create a dedicated user (recommended)
 adduser kino
 usermod -aG docker kino
-# SSH-Key für kino-User hinterlegen, dann als kino einloggen
+# Add SSH key for the kino user, then log in as kino
 
-# Repo klonen und .env befüllen
+# Clone repo and configure
 git clone <repo-url> && cd ov-in-bielefeld
 cp .env.example .env
-nano .env  # TMDB_API_KEY, TELEGRAM_*, WEBAPP_URL setzen
+nano .env  # Set TMDB_API_KEY, TELEGRAM_*, WEBAPP_URL
 
-# Starten
+# Start
 docker compose up -d
 
-# Logs live (stdout beider Container)
+# Live logs (stdout from both containers)
 docker compose logs -f
 
-# Persistente Log-Datei (rotiert täglich, alte Logs mit xz komprimiert)
+# Persistent log file (rotates daily, old logs xz-compressed)
 docker compose exec web tail -f /app/logs/kino.log
 ```
 
-### Reverse Proxy (Caddy)
+### Reverse proxy (Caddy)
 
 ```
-kino.deine-domain.de {
+kino.your-domain.de {
     reverse_proxy localhost:8000
 }
 ```
 
-Caddy holt automatisch ein Let's Encrypt Zertifikat.
+Caddy automatically obtains a Let's Encrypt certificate.
 
-### Updates einspielen
+### Updates
 
 ```bash
 git pull
 docker compose up -d --build
 ```
 
-## Architektur
+## Architecture
 
 ```
 ov-in-bielefeld/
-├── webapp.py           # FastAPI + Jinja2 Web-App
-├── orchestrator.py     # Scraper + TMDb-Enrichment + DB-Update
-├── scheduler.py        # APScheduler (täglich 06:00, Mi häufiger)
-├── telegram_bot.py     # Telegram-Notifications + /programm-Befehl
-├── database.py         # SQLite-Layer
-├── tmdb_client.py      # TMDb API Integration
-├── main.py             # Dev-Launcher (uvicorn mit reload)
+├── webapp.py           # FastAPI + Jinja2 web app, Brotli cache, access log middleware
+├── orchestrator.py     # Scraper runner + TMDb enrichment + DB writes
+├── scheduler.py        # APScheduler (midnight cache flush, 06:00 daily, Wednesdays more often)
+├── telegram_bot.py     # Telegram notifications + /programm command
+├── database.py         # SQLite layer (films, showtimes, tmdb_cache)
+├── tmdb_client.py      # TMDb API client + IMDb/OMDb URL helpers
+├── ratings_client.py   # IMDb rating + Rotten Tomatoes score fetching
+├── cache.py            # In-process Brotli page cache with sentinel-file invalidation
+├── log_setup.py        # Centralised logging: stderr + daily-rotating xz log file
+├── main.py             # Dev launcher (uvicorn with reload)
 ├── scrapers/
-│   ├── arthouse.py     # Lichtwerk & Kamera (HTML-Scraping)
-│   └── cinemaxx.py     # CinemaxX (REST API, zwei Schritte)
-├── templates/          # Jinja2 HTML-Templates
-├── static/             # CSS, Assets
-├── pyproject.toml      # Abhängigkeiten (uv)
+│   ├── arthouse.py     # Lichtwerk & Kamera (HTML scraping)
+│   └── cinemaxx.py     # CinemaxX (two-step REST API)
+├── templates/          # Jinja2 HTML templates
+├── static/             # CSS, assets
+├── tests/              # pytest suite (79 tests)
+│   ├── fixtures/       # Real HTML fixture from arthouse site (xz-compressed)
+│   ├── test_arthouse.py
+│   ├── test_cinemaxx.py
+│   ├── test_webapp_helpers.py
+│   └── test_database.py
+├── pyproject.toml      # Dependencies (uv)
 ├── docker-compose.yml
 └── Dockerfile
 ```
 
-## Scraping-Zeitplan
+## Scraping schedule
 
-| Wann | Frequenz | Warum |
-|------|----------|-------|
-| Täglich 06:00 | 1x | Basisdaten aktuell halten |
-| Mittwochs 08–20 Uhr | alle 2h | Neue Kinowoche fängt mittwochs an |
-| Andere Tage | alle 6h | Nachzügler und Änderungen erfassen |
+| When | Frequency | Why |
+|------|-----------|-----|
+| Daily 00:00 | once | Flush page cache (date labels go stale at midnight) |
+| Daily 06:00 | once | Refresh base data |
+| Wednesdays 08:00–20:00 | every 2h | New Kinowoche programme starts Wednesday |
+| Other days | every 6h | Catch late additions and changes |
 
-## Umgebungsvariablen (.env)
+## Environment variables (.env)
 
-| Variable | Pflicht | Beschreibung |
-|----------|---------|--------------|
-| `TMDB_API_KEY` | ✅ | TMDb API Key (kostenlos) |
-| `OMDB_API_KEY` | optional | OMDb API Key für Rotten-Tomatoes-Scores (kostenlos, 1000 req/Tag) |
-| `TELEGRAM_BOT_TOKEN` | optional | Bot-Token von @BotFather |
-| `TELEGRAM_CHAT_ID` | optional | Eigene Chat-ID (z.B. via @userinfobot) |
-| `WEBAPP_URL` | optional | Öffentliche URL für Telegram-Links (default: http://localhost:8000) |
-| `KINO_DB_PATH` | optional | Pfad zur SQLite-DB (default: kino_ov.db) |
-| `KINO_LOG_DIR` | optional | Log-Verzeichnis (default: logs/, im Docker: /app/logs) |
-| `PORT` | optional | Web-Port (default: 8000) |
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `TMDB_API_KEY` | ✅ | TMDb API key (free) |
+| `OMDB_API_KEY` | optional | OMDb API key for Rotten Tomatoes scores (free, 1000 req/day) |
+| `TELEGRAM_BOT_TOKEN` | optional | Bot token from @BotFather |
+| `TELEGRAM_CHAT_ID` | optional | Your chat ID (use @userinfobot to find it) |
+| `WEBAPP_URL` | optional | Public URL for Telegram links (default: http://localhost:8000) |
+| `KINO_DB_PATH` | optional | Path to SQLite database (default: kino_ov.db) |
+| `KINO_LOG_DIR` | optional | Log directory (default: logs/, in Docker: /app/logs) |
+| `PORT` | optional | Web server port (default: 8000) |
