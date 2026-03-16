@@ -93,6 +93,9 @@ def init_db() -> None:
         ).fetchone()
         if schema_row and "UNIQUE(title_display)" in (schema_row["sql"] or ""):
             db.execute("PRAGMA foreign_keys=OFF")
+            # Prevent SQLite 3.26+ from rewriting FK references in other tables
+            # (e.g. showtimes' REFERENCES films(id) → _films_old(id))
+            db.execute("PRAGMA legacy_alter_table=ON")
             try:
                 db.execute("ALTER TABLE films RENAME TO _films_old")
                 db.execute("""
@@ -118,6 +121,33 @@ def init_db() -> None:
                 """)
                 db.execute("INSERT INTO films SELECT * FROM _films_old")
                 db.execute("DROP TABLE _films_old")
+            finally:
+                db.execute("PRAGMA legacy_alter_table=OFF")
+                db.execute("PRAGMA foreign_keys=ON")
+
+        # Repair: a previous buggy migration may have rewritten showtimes' FK
+        # from films(id) to _films_old(id). Detect and fix by recreating showtimes.
+        st_schema = db.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='showtimes'"
+        ).fetchone()
+        if st_schema and "_films_old" in (st_schema["sql"] or ""):
+            db.execute("PRAGMA foreign_keys=OFF")
+            try:
+                db.execute("ALTER TABLE showtimes RENAME TO _showtimes_broken")
+                db.execute("""
+                    CREATE TABLE showtimes (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        film_id INTEGER NOT NULL REFERENCES films(id) ON DELETE CASCADE,
+                        cinema TEXT NOT NULL,
+                        showtime TEXT NOT NULL,
+                        language_tag TEXT,
+                        booking_url TEXT,
+                        scraped_at TEXT NOT NULL DEFAULT (datetime('now')),
+                        UNIQUE(film_id, cinema, showtime)
+                    )
+                """)
+                db.execute("INSERT INTO showtimes SELECT * FROM _showtimes_broken")
+                db.execute("DROP TABLE _showtimes_broken")
             finally:
                 db.execute("PRAGMA foreign_keys=ON")
 

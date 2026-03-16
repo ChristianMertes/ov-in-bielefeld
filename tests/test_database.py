@@ -1,6 +1,8 @@
 """Tests for the database layer."""
+import sqlite3
 from datetime import datetime, timedelta
 
+import database
 from database import (
     cleanup_old_showtimes,
     get_film_by_id,
@@ -10,6 +12,7 @@ from database import (
     get_showtimes_for_films,
     get_tmdb_cache,
     get_upcoming_films,
+    init_db,
     mark_film_notified,
     set_tmdb_cache,
     update_film_ratings,
@@ -546,3 +549,241 @@ def test_get_films_with_imdb_id_includes_imdb_id_value(db):
     rows = get_films_with_imdb_id(db)
     row = next(r for r in rows if r["id"] == film_id)
     assert row["imdb_id"] == "tt0076759"
+
+
+# ── migration: UNIQUE(title_display) removal ─────────────────────────────────
+
+OLD_SCHEMA = """\
+CREATE TABLE films (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title_display TEXT NOT NULL,
+    title_original TEXT,
+    title_de TEXT,
+    original_language TEXT,
+    tmdb_id INTEGER,
+    imdb_id TEXT,
+    poster_url TEXT,
+    overview TEXT,
+    release_year INTEGER,
+    runtime_minutes INTEGER,
+    first_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
+    notified INTEGER NOT NULL DEFAULT 0,
+    imdb_rating REAL,
+    imdb_votes INTEGER,
+    rt_score INTEGER,
+    tmdb_popularity REAL,
+    UNIQUE(title_display)
+);
+CREATE TABLE showtimes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    film_id INTEGER NOT NULL REFERENCES films(id) ON DELETE CASCADE,
+    cinema TEXT NOT NULL,
+    showtime TEXT NOT NULL,
+    language_tag TEXT,
+    booking_url TEXT,
+    scraped_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(film_id, cinema, showtime)
+);
+CREATE TABLE tmdb_cache (
+    title_query TEXT PRIMARY KEY,
+    tmdb_id INTEGER,
+    imdb_id TEXT,
+    title_original TEXT,
+    original_language TEXT,
+    poster_url TEXT,
+    overview TEXT,
+    release_year INTEGER,
+    runtime_minutes INTEGER,
+    cached_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+"""
+
+
+def test_migration_from_old_schema_preserves_data(tmp_path, monkeypatch):
+    """init_db migrates UNIQUE(title_display) away while keeping existing rows."""
+    db_path = str(tmp_path / "migrate.db")
+    monkeypatch.setattr(database, "DB_PATH", db_path)
+
+    # Create old-schema DB with seed data
+    conn = sqlite3.connect(db_path)
+    conn.executescript(OLD_SCHEMA)
+    conn.execute("PRAGMA foreign_keys=ON")
+    conn.execute(
+        "INSERT INTO films (title_display, original_language) VALUES (?, ?)",
+        ("Inception", "en"),
+    )
+    film_id = conn.execute("SELECT id FROM films WHERE title_display='Inception'").fetchone()[0]
+    conn.execute(
+        "INSERT INTO showtimes (film_id, cinema, showtime) VALUES (?, ?, ?)",
+        (film_id, "lichtwerk", _future(1)),
+    )
+    conn.commit()
+    conn.close()
+
+    # Run init_db which triggers the migration
+    init_db()
+
+    # Verify data survived
+    conn = database.get_connection()
+    row = conn.execute("SELECT * FROM films WHERE title_display='Inception'").fetchone()
+    assert row is not None
+    assert row["original_language"] == "en"
+
+    st = conn.execute("SELECT * FROM showtimes WHERE film_id=?", (row["id"],)).fetchone()
+    assert st is not None
+    assert st["cinema"] == "lichtwerk"
+    conn.close()
+
+
+def test_migration_showtimes_fk_not_broken(tmp_path, monkeypatch):
+    """After migration, showtimes FK must reference 'films', not '_films_old'.
+
+    This is the bug: SQLite 3.26+ rewrites FK references when renaming a table,
+    so RENAME films TO _films_old changes showtimes' FK to _films_old(id).
+    After _films_old is dropped, any FK-checked operation on showtimes crashes
+    with 'no such table: main._films_old'.
+    """
+    db_path = str(tmp_path / "fk.db")
+    monkeypatch.setattr(database, "DB_PATH", db_path)
+
+    conn = sqlite3.connect(db_path)
+    conn.executescript(OLD_SCHEMA)
+    conn.execute("PRAGMA foreign_keys=ON")
+    conn.execute(
+        "INSERT INTO films (title_display) VALUES (?)", ("Old Film",)
+    )
+    conn.execute(
+        "INSERT INTO showtimes (film_id, cinema, showtime) VALUES (1, 'lichtwerk', ?)",
+        (_past(10),),
+    )
+    conn.commit()
+    conn.close()
+
+    init_db()
+
+    # This is the operation that crashes with the bug
+    conn = database.get_connection()
+    cleanup_old_showtimes(conn, days_old=7)
+    conn.commit()
+    conn.close()
+
+
+def test_migration_no_leftover_films_old_table(tmp_path, monkeypatch):
+    """The temporary _films_old table must not exist after migration."""
+    db_path = str(tmp_path / "leftover.db")
+    monkeypatch.setattr(database, "DB_PATH", db_path)
+
+    conn = sqlite3.connect(db_path)
+    conn.executescript(OLD_SCHEMA)
+    conn.commit()
+    conn.close()
+
+    init_db()
+
+    conn = database.get_connection()
+    tables = {r[0] for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'"
+    ).fetchall()}
+    assert "_films_old" not in tables
+    conn.close()
+
+
+def test_migration_showtimes_schema_references_films(tmp_path, monkeypatch):
+    """After migration, the showtimes CREATE TABLE must reference 'films', not '_films_old'."""
+    db_path = str(tmp_path / "schema.db")
+    monkeypatch.setattr(database, "DB_PATH", db_path)
+
+    conn = sqlite3.connect(db_path)
+    conn.executescript(OLD_SCHEMA)
+    conn.commit()
+    conn.close()
+
+    init_db()
+
+    conn = database.get_connection()
+    schema = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='showtimes'"
+    ).fetchone()["sql"]
+    assert "_films_old" not in schema
+    assert "films(id)" in schema.lower() or "films (id)" in schema.lower()
+    conn.close()
+
+
+def test_repair_broken_showtimes_fk(tmp_path, monkeypatch):
+    """init_db repairs a DB where a previous buggy migration left showtimes
+    referencing _films_old instead of films."""
+    db_path = str(tmp_path / "repair.db")
+    monkeypatch.setattr(database, "DB_PATH", db_path)
+
+    # Simulate the broken state: films table is correct (no UNIQUE(title_display)),
+    # but showtimes references _films_old
+    conn = sqlite3.connect(db_path)
+    conn.executescript("""
+        CREATE TABLE films (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title_display TEXT NOT NULL,
+            title_original TEXT,
+            title_de TEXT,
+            original_language TEXT,
+            tmdb_id INTEGER,
+            imdb_id TEXT,
+            poster_url TEXT,
+            overview TEXT,
+            release_year INTEGER,
+            runtime_minutes INTEGER,
+            first_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
+            notified INTEGER NOT NULL DEFAULT 0,
+            imdb_rating REAL,
+            imdb_votes INTEGER,
+            rt_score INTEGER,
+            tmdb_popularity REAL
+        );
+        CREATE TABLE showtimes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            film_id INTEGER NOT NULL REFERENCES "_films_old"(id) ON DELETE CASCADE,
+            cinema TEXT NOT NULL,
+            showtime TEXT NOT NULL,
+            language_tag TEXT,
+            booking_url TEXT,
+            scraped_at TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(film_id, cinema, showtime)
+        );
+        CREATE TABLE tmdb_cache (
+            title_query TEXT PRIMARY KEY,
+            tmdb_id INTEGER,
+            imdb_id TEXT,
+            title_original TEXT,
+            title_de TEXT,
+            original_language TEXT,
+            poster_url TEXT,
+            overview TEXT,
+            release_year INTEGER,
+            runtime_minutes INTEGER,
+            tmdb_popularity REAL,
+            cached_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+    """)
+    conn.execute(
+        "INSERT INTO films (title_display) VALUES (?)", ("Broken FK Film",)
+    )
+    conn.execute(
+        "INSERT INTO showtimes (film_id, cinema, showtime) VALUES (1, 'lichtwerk', ?)",
+        (_past(10),),
+    )
+    conn.commit()
+    conn.close()
+
+    # init_db should detect and repair the broken FK
+    init_db()
+
+    # Verify the FK now references 'films', and cleanup works
+    conn = database.get_connection()
+    schema = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='showtimes'"
+    ).fetchone()["sql"]
+    assert "_films_old" not in schema
+
+    # This would crash before the repair
+    cleanup_old_showtimes(conn, days_old=7)
+    conn.commit()
+    conn.close()
