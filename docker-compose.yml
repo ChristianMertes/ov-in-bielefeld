@@ -7,6 +7,9 @@ services:
       - db-data:/data
       - log-data:/app/logs
     env_file: .env
+    environment:
+      # Override .env to ensure both containers use the shared /data volume
+      KINO_DB_PATH: /data/kino_ov.db
     restart: unless-stopped
 
   scheduler:
@@ -15,6 +18,8 @@ services:
       - db-data:/data
       - log-data:/app/logs
     env_file: .env
+    environment:
+      KINO_DB_PATH: /data/kino_ov.db
     restart: unless-stopped
     command: uv run python scheduler.py
     depends_on:
