@@ -39,9 +39,8 @@ header {
 
 header .container {
     display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    flex-wrap: wrap;
+    flex-direction: column;
+    align-items: center;
     gap: 1rem;
 }
 
@@ -62,6 +61,7 @@ h1 a {
     font-size: 0.82rem;
     color: var(--text-muted);
     margin: 0.15rem 0 0;
+    text-align: center;
 }
 
 .site-tagline a {
@@ -80,7 +80,7 @@ h1 span {
     display: flex;
     flex-direction: column;
     gap: 0.4rem;
-    align-items: flex-end;
+    align-items: center;
 }
 
 .filters {
@@ -88,6 +88,7 @@ h1 span {
     gap: 0.5rem;
     flex-wrap: wrap;
     align-items: center;
+    justify-content: center;
 }
 
 .filters-label {
