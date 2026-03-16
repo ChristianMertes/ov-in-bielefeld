@@ -147,6 +147,14 @@ def _next_showtime_label(dt_str: str, now: datetime) -> str:
     return f"{show_date.day}. {_MONTHS_DE[show_date.month - 1]}"
 
 
+def _is_future(dt_str: str, now: datetime) -> bool:
+    """Return True if the ISO datetime string is in the future."""
+    try:
+        return datetime.fromisoformat(dt_str) >= now
+    except (ValueError, TypeError):
+        return True
+
+
 templates.env.filters["date_de"] = _format_date_de
 templates.env.filters["time_hm"] = _format_time
 templates.env.filters["votes_fmt"] = _format_votes
@@ -186,17 +194,22 @@ async def index(
             film_dict = dict(f)
             showtimes = showtimes_by_film.get(f["id"], [])
 
-            # Group showtimes by date
+            # Group showtimes by date, dropping any that are in the past
             by_date = defaultdict(list)
             for st in showtimes:
                 try:
-                    date_key = datetime.fromisoformat(st["showtime"]).date().isoformat()
+                    dt = datetime.fromisoformat(st["showtime"])
+                    if dt < now:
+                        continue
+                    date_key = dt.date().isoformat()
                 except (ValueError, TypeError):
                     date_key = "unknown"
                 by_date[date_key].append(st)
 
             film_dict["showtimes_by_date"] = dict(sorted(by_date.items()))
-            film_dict["showtimes_list"] = showtimes
+            film_dict["showtimes_list"] = [
+                st for st in showtimes if _is_future(st.get("showtime", ""), now)
+            ]
             film_dict["cinema_list"] = (
                 f["cinemas"].split(",") if f["cinemas"] else []
             )
@@ -257,12 +270,15 @@ async def film_detail(request: Request, film_id: int) -> Response:
             return HTMLResponse("Film not found", status_code=404)
 
         showtimes = get_film_showtimes(db, film_id)
+        now = datetime.now()
 
-        # Group by date
+        # Group by date, dropping any that are in the past
         by_date = defaultdict(list)
         for st in showtimes:
             try:
                 dt = datetime.fromisoformat(st["showtime"])
+                if dt < now:
+                    continue
                 date_key = dt.date().isoformat()
             except (ValueError, TypeError):
                 date_key = "unknown"
@@ -334,13 +350,17 @@ async def sitemap_xml(request: Request) -> Response:
 @app.get("/api/films")
 async def api_films(cinema: str | None = None) -> list[dict[str, object]]:
     """JSON API endpoint for external consumption."""
+    now = datetime.now()
     with get_db() as db:
         films = get_upcoming_films(db, cinema=cinema)
         showtimes_by_film = get_showtimes_for_films(db, [f["id"] for f in films])
         result = []
         for f in films:
             film_dict = dict(f)
-            film_dict["showtimes"] = showtimes_by_film.get(f["id"], [])
+            film_dict["showtimes"] = [
+                st for st in showtimes_by_film.get(f["id"], [])
+                if _is_future(st.get("showtime", ""), now)
+            ]
             result.append(film_dict)
     return result
 

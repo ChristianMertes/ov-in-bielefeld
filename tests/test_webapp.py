@@ -7,11 +7,15 @@ from fastapi.testclient import TestClient
 import database
 import settings
 from database import upsert_film, upsert_showtime
-from webapp import app
+from webapp import _is_future, app
 
 
 def _future(days=1):
     return (datetime.now() + timedelta(days=days)).replace(microsecond=0).isoformat()
+
+
+def _past(days=1):
+    return (datetime.now() - timedelta(days=days)).replace(microsecond=0).isoformat()
 
 
 @pytest.fixture
@@ -208,3 +212,105 @@ def test_api_films_cinema_filter(client_with_film):
 
     resp2 = client.get("/api/films?cinema=cinemaxx")
     assert resp2.json() == []
+
+
+# ── past showtime filtering ──────────────────────────────────────────────────
+
+# Unit tests for _is_future
+
+def test_is_future_with_future_datetime():
+    now = datetime(2026, 3, 16, 14, 0, 0)
+    assert _is_future("2026-03-16T20:00:00", now) is True
+
+
+def test_is_future_with_past_datetime():
+    now = datetime(2026, 3, 16, 14, 0, 0)
+    assert _is_future("2026-03-16T10:00:00", now) is False
+
+
+def test_is_future_with_equal_datetime():
+    now = datetime(2026, 3, 16, 14, 0, 0)
+    assert _is_future("2026-03-16T14:00:00", now) is True
+
+
+def test_is_future_with_invalid_string():
+    """Invalid datetime strings are kept (treated as future) to avoid hiding data."""
+    now = datetime(2026, 3, 16, 14, 0, 0)
+    assert _is_future("not-a-date", now) is True
+
+
+# Integration tests: insert two future showtimes, then advance webapp's "now"
+# past the first one so only the view-layer filter (not the DB) drops it.
+
+SOON = (datetime.now() + timedelta(days=2)).replace(hour=20, minute=0, second=0, microsecond=0)
+LATER = (datetime.now() + timedelta(days=4)).replace(hour=20, minute=0, second=0, microsecond=0)
+BETWEEN = SOON + timedelta(days=1)  # after SOON, before LATER
+
+
+@pytest.fixture
+def client_mixed_showtimes(tmp_path, monkeypatch):
+    """Film with two future showtimes. Webapp's now is shifted to be between them."""
+    db_path = str(tmp_path / "test.db")
+    monkeypatch.setattr(database, "DB_PATH", db_path)
+    monkeypatch.setattr(settings, "DB_PATH", db_path)
+    import cache as _cache
+    with _cache._lock:
+        _cache._store.clear()
+        _cache._store_plain.clear()
+        _cache._version = -1.0
+    with TestClient(app) as c:
+        from database import get_db
+        with get_db() as conn:
+            film_id, _ = upsert_film(
+                conn, "Time Travel Film",
+                original_language="en", tmdb_id=88888,
+            )
+            upsert_showtime(conn, film_id, "lichtwerk", SOON.isoformat(),
+                            "OV", "https://example.com/soon")
+            upsert_showtime(conn, film_id, "kamera", LATER.isoformat(),
+                            "OmU", "https://example.com/later")
+        yield c, film_id
+
+
+def test_index_hides_past_showtimes(client_mixed_showtimes, monkeypatch):
+    """Showtimes that were future at DB-query time but are past at render time
+    must not appear on the index page."""
+    client, _ = client_mixed_showtimes
+    import webapp
+    monkeypatch.setattr(webapp, "datetime", _FakeDatetime)
+    resp = client.get("/", headers={"Accept-Encoding": "gzip"})
+    assert resp.status_code == 200
+    assert "example.com/later" in resp.text
+    assert "example.com/soon" not in resp.text
+
+
+def test_film_detail_hides_past_showtimes(client_mixed_showtimes, monkeypatch):
+    """Same filtering on the film detail page."""
+    client, film_id = client_mixed_showtimes
+    import webapp
+    monkeypatch.setattr(webapp, "datetime", _FakeDatetime)
+    resp = client.get(f"/film/{film_id}", headers={"Accept-Encoding": "gzip"})
+    assert resp.status_code == 200
+    assert "example.com/later" in resp.text
+    assert "example.com/soon" not in resp.text
+
+
+def test_api_films_hides_past_showtimes(client_mixed_showtimes, monkeypatch):
+    """Same filtering on the JSON API."""
+    client, _ = client_mixed_showtimes
+    import webapp
+    monkeypatch.setattr(webapp, "datetime", _FakeDatetime)
+    resp = client.get("/api/films")
+    data = resp.json()
+    assert len(data) == 1
+    urls = [st["booking_url"] for st in data[0]["showtimes"]]
+    assert "https://example.com/later" in urls
+    assert "https://example.com/soon" not in urls
+
+
+class _FakeDatetime(datetime):
+    """datetime subclass whose now() returns BETWEEN, while fromisoformat still works."""
+
+    @classmethod
+    def now(cls, tz=None):  # noqa: ANN001
+        return BETWEEN
