@@ -21,9 +21,6 @@ TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/w500"
 # Languages we're interested in for OV screenings
 RELEVANT_LANGUAGES = {"en", "fr"}
 
-# Languages to exclude (German films shown "OmU" are just German with German subs)
-EXCLUDE_LANGUAGES = {"de"}
-
 
 def lookup_film(title: str, year: int | None = None) -> dict | None:
     """Look up a film by its (German) display title on TMDb.
@@ -63,8 +60,6 @@ def _clean_title_for_search(title: str) -> str:
     """Remove noise from title for better TMDb search results."""
     # Remove year in parentheses (TMDb has its own year filter)
     title = re.sub(r"\s*\(\d{4}\)\s*", " ", title)
-    # Remove common German prefixes/suffixes
-    title = re.sub(r"^(Der|Die|Das)\s+", "", title, flags=re.IGNORECASE)
     # Remove "3D", "IMAX" etc.
     title = re.sub(r"\b(3D|IMAX|4DX|Dolby)\b", "", title, flags=re.IGNORECASE)
     return title.strip()

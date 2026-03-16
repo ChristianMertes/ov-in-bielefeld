@@ -195,6 +195,11 @@ def _process_update(update: dict) -> None:
     if not text or not chat_id:
         return
 
+    # Only respond to the configured chat to prevent strangers from using the bot
+    if CHAT_ID and str(chat_id) != str(CHAT_ID):
+        logger.debug("Ignoring message from unknown chat %s", chat_id)
+        return
+
     if text.startswith("/start"):
         send_message(
             "👋 Hallo! Ich bin der Kino-OV-Bot für Bielefeld.\n\n"

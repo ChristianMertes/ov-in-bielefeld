@@ -44,6 +44,20 @@ CINEMAXX_FILMS_RESPONSE = {
             "genres": [],
         },
         {
+            "filmId": "F400",
+            "filmTitle": "OV Film No Sessions",
+            "originalTitle": "OV Film No Sessions",
+            "sessionAttributes": [
+                {"attributeType": "Language", "value": "english", "name": "Englisch", "shortName": "EN"},
+            ],
+            "filmAttributes": [],
+            "runningTime": 100,
+            "releaseDate": "2025-04-01",
+            "posterImageSrc": None,
+            "filmUrl": "",
+            "genres": [],
+        },
+        {
             "filmId": "F300",
             "filmTitle": "Le Dernier Souffle",
             "originalTitle": "Le Dernier Souffle",
@@ -211,6 +225,20 @@ class TestScrapeCinemaxx:
             films = scrape_cinemaxx()
 
         assert films == []
+
+    def test_film_with_ov_attrs_but_no_ov_sessions_excluded(self):
+        """A film that has OV language attributes but zero matching OV sessions
+        should not appear in the results."""
+        with patch("scrapers.cinemaxx.requests.Session") as mock_session_cls:
+            session = MagicMock()
+            session.get.side_effect = _cinemaxx_get_side_effect
+            session.headers = {}
+            mock_session_cls.return_value = session
+
+            films = scrape_cinemaxx()
+
+        titles = [f["title_display"] for f in films]
+        assert "OV Film No Sessions" not in titles
 
     def test_empty_api_result(self):
         with patch("scrapers.cinemaxx.requests.Session") as mock_session_cls:

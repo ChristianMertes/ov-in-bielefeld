@@ -184,6 +184,15 @@ async def index(
     sort: Annotated[str, Query(description="Sort by: date or title")] = "date",
 ) -> Response:
     """Main page showing all upcoming OV/OmU films."""
+    cache_key = f"index:{cinema or ''}:{lang or ''}:{sort}"
+    brotli_ok = _supports_brotli(request)
+    cached = cache.get(cache_key) if brotli_ok else cache.get_plain(cache_key)
+    if cached:
+        headers = {"Vary": "Accept-Encoding"}
+        if brotli_ok:
+            headers["Content-Encoding"] = "br"
+        return Response(content=cached, media_type="text/html; charset=utf-8", headers=headers)
+
     now = datetime.now()
     with get_db() as db:
         films_raw = get_upcoming_films(db, cinema=cinema)
@@ -233,15 +242,6 @@ async def index(
     elif sort == "popularity":
         films.sort(key=lambda f: f.get("tmdb_popularity") or 0, reverse=True)
 
-    cache_key = f"index:{cinema or ''}:{lang or ''}:{sort}"
-    brotli_ok = _supports_brotli(request)
-    cached = cache.get(cache_key) if brotli_ok else cache.get_plain(cache_key)
-    if cached:
-        headers = {"Vary": "Accept-Encoding"}
-        if brotli_ok:
-            headers["Content-Encoding"] = "br"
-        return Response(content=cached, media_type="text/html; charset=utf-8", headers=headers)
-
     html = templates.get_template("index.html").render({
         "request": request,
         "films": films,
@@ -264,10 +264,20 @@ async def index(
 @app.get("/film/{film_id}", response_class=HTMLResponse)
 async def film_detail(request: Request, film_id: int) -> Response:
     """Detail page for a single film."""
+    cache_key = f"film:{film_id}"
+    brotli_ok = _supports_brotli(request)
+    cached = cache.get(cache_key) if brotli_ok else cache.get_plain(cache_key)
+    if cached:
+        headers = {"Vary": "Accept-Encoding"}
+        if brotli_ok:
+            headers["Content-Encoding"] = "br"
+        return Response(content=cached, media_type="text/html; charset=utf-8", headers=headers)
+
     with get_db() as db:
         film = get_film_by_id(db, film_id)
         if not film:
-            return HTMLResponse("Film not found", status_code=404)
+            html = templates.get_template("404.html").render({"request": request})
+            return HTMLResponse(html, status_code=404)
 
         showtimes = get_film_showtimes(db, film_id)
         now = datetime.now()
@@ -283,15 +293,6 @@ async def film_detail(request: Request, film_id: int) -> Response:
             except (ValueError, TypeError):
                 date_key = "unknown"
             by_date[date_key].append(dict(st))
-
-    cache_key = f"film:{film_id}"
-    brotli_ok = _supports_brotli(request)
-    cached = cache.get(cache_key) if brotli_ok else cache.get_plain(cache_key)
-    if cached:
-        headers = {"Vary": "Accept-Encoding"}
-        if brotli_ok:
-            headers["Content-Encoding"] = "br"
-        return Response(content=cached, media_type="text/html; charset=utf-8", headers=headers)
 
     html = templates.get_template("film_detail.html").render({
         "request": request,

@@ -258,7 +258,8 @@ def test_handle_updates_drains_stale_and_polls(monkeypatch):
 
 # ── _process_update ──────────────────────────────────────────────────────────
 
-def test_process_update_start_command():
+def test_process_update_start_command(monkeypatch):
+    monkeypatch.setattr(telegram_bot, "CHAT_ID", "42")
     update = {"message": {"text": "/start", "chat": {"id": 42}}}
     with patch("telegram_bot.send_message") as mock_send:
         _process_update(update)
@@ -268,7 +269,8 @@ def test_process_update_start_command():
     assert "42" in msg
 
 
-def test_process_update_info_command():
+def test_process_update_info_command(monkeypatch):
+    monkeypatch.setattr(telegram_bot, "CHAT_ID", "42")
     update = {"message": {"text": "/info", "chat": {"id": 42}}}
     with patch("telegram_bot.send_message") as mock_send:
         _process_update(update)
@@ -278,6 +280,7 @@ def test_process_update_info_command():
 
 
 def test_process_update_programm_with_films(tg_db, monkeypatch):
+    monkeypatch.setattr(telegram_bot, "CHAT_ID", "42")
     monkeypatch.setattr(telegram_bot, "WEBAPP_URL", "https://kino.test")
     _insert_film(tg_db, title="OV Film", imdb_id="tt0030")
     update = {"message": {"text": "/programm", "chat": {"id": 42}}}
@@ -289,7 +292,8 @@ def test_process_update_programm_with_films(tg_db, monkeypatch):
     assert "https://kino.test" in msg
 
 
-def test_process_update_programm_empty(tg_db):
+def test_process_update_programm_empty(tg_db, monkeypatch):
+    monkeypatch.setattr(telegram_bot, "CHAT_ID", "42")
     update = {"message": {"text": "/programm", "chat": {"id": 42}}}
     with patch("telegram_bot.send_message") as mock_send:
         _process_update(update)
@@ -297,15 +301,17 @@ def test_process_update_programm_empty(tg_db):
     assert "Keine" in mock_send.call_args[0][0]
 
 
-def test_process_update_unknown_command():
+def test_process_update_unknown_command(monkeypatch):
     """Unknown commands should not trigger any message."""
+    monkeypatch.setattr(telegram_bot, "CHAT_ID", "42")
     update = {"message": {"text": "/unknown", "chat": {"id": 42}}}
     with patch("telegram_bot.send_message") as mock_send:
         _process_update(update)
     mock_send.assert_not_called()
 
 
-def test_process_update_no_text():
+def test_process_update_no_text(monkeypatch):
+    monkeypatch.setattr(telegram_bot, "CHAT_ID", "42")
     update = {"message": {"chat": {"id": 42}}}
     with patch("telegram_bot.send_message") as mock_send:
         _process_update(update)
@@ -317,3 +323,21 @@ def test_process_update_no_chat_id():
     with patch("telegram_bot.send_message") as mock_send:
         _process_update(update)
     mock_send.assert_not_called()
+
+
+def test_process_update_wrong_chat_id_ignored(monkeypatch):
+    """Commands from a chat that isn't CHAT_ID must be silently ignored."""
+    monkeypatch.setattr(telegram_bot, "CHAT_ID", "123456")
+    update = {"message": {"text": "/start", "chat": {"id": 999999}}}
+    with patch("telegram_bot.send_message") as mock_send:
+        _process_update(update)
+    mock_send.assert_not_called()
+
+
+def test_process_update_correct_chat_id_handled(monkeypatch):
+    """Commands from the configured CHAT_ID must be processed."""
+    monkeypatch.setattr(telegram_bot, "CHAT_ID", "42")
+    update = {"message": {"text": "/start", "chat": {"id": 42}}}
+    with patch("telegram_bot.send_message") as mock_send:
+        _process_update(update)
+    mock_send.assert_called_once()

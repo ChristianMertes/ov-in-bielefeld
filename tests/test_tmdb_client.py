@@ -49,16 +49,19 @@ def test_clean_removes_year_in_parens():
     assert _clean_title_for_search("Dune (2021)") == "Dune"
 
 
-def test_clean_removes_german_der():
-    assert _clean_title_for_search("Der Pate") == "Pate"
+def test_clean_preserves_die_hard():
+    """German article stripping was removed — 'Die Hard' must survive."""
+    assert _clean_title_for_search("Die Hard") == "Die Hard"
 
 
-def test_clean_removes_german_die():
-    assert _clean_title_for_search("Die Welle") == "Welle"
+def test_clean_preserves_das_boot():
+    """Das Boot is both the German and English title — must survive."""
+    assert _clean_title_for_search("Das Boot") == "Das Boot"
 
 
-def test_clean_removes_german_das():
-    assert _clean_title_for_search("Das Boot") == "Boot"
+def test_clean_preserves_der_pate():
+    """TMDb handles German articles fine; no need to strip them."""
+    assert _clean_title_for_search("Der Pate") == "Der Pate"
 
 
 def test_clean_removes_3d():

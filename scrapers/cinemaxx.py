@@ -99,6 +99,9 @@ def scrape_cinemaxx() -> list[dict]:
         if parsed:
             film_id = film.get("filmId", "")
             parsed["showtimes"] = _fetch_ov_showtimes(http, film_id)
+            if not parsed["showtimes"]:
+                logger.debug("Skipping '%s': no OV sessions found", parsed["title_display"])
+                continue
             result.append(parsed)
 
     logger.info("CinemaxX: %d English/French OV/OmU films", len(result))

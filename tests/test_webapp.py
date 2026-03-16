@@ -158,11 +158,26 @@ def test_index_sort_by_rating(client_with_film):
     assert resp.status_code == 200
 
 
+def test_index_shows_film_count(client_with_film):
+    """Index page should show how many films are listed."""
+    client, _ = client_with_film
+    resp = client.get("/", headers={"Accept-Encoding": "gzip"})
+    assert "1 Film" in resp.text
+
+
 # ── film detail route ─────────────────────────────────────────────────────────
 
 def test_film_detail_not_found(client):
     resp = client.get("/film/99999")
     assert resp.status_code == 404
+
+
+def test_film_detail_not_found_has_layout(client):
+    """404 page should use the site layout, not be a bare string."""
+    resp = client.get("/film/99999")
+    assert resp.status_code == 404
+    assert "Kino OV" in resp.text
+    assert "<header" in resp.text
 
 
 def test_film_detail_found(client_with_film):
@@ -184,6 +199,14 @@ def test_film_detail_brotli(client_with_film):
     resp = client.get(f"/film/{film_id}", headers={"Accept-Encoding": "br"})
     assert resp.status_code == 200
     assert resp.headers.get("content-encoding") == "br"
+
+
+def test_film_detail_has_og_tags(client_with_film):
+    """Film detail should include Open Graph tags for social sharing."""
+    client, film_id = client_with_film
+    resp = client.get(f"/film/{film_id}", headers={"Accept-Encoding": "gzip"})
+    assert "og:title" in resp.text
+    assert "og:description" in resp.text
 
 
 # ── api/films route ───────────────────────────────────────────────────────────
