@@ -1,16 +1,24 @@
 {% extends "base.html" %}
 
-{% block title %}{{ film.title_display }} — Kino OV Bielefeld{% endblock %}
+{% block title %}{{ film.title_original or film.title_display }} — Kino OV Bielefeld{% endblock %}
+
+{% block meta_extra %}
+<meta property="og:title" content="{{ film.title_original or film.title_display }}">
+<meta property="og:description" content="{% if film.release_year %}{{ film.release_year }} · {% endif %}{% if film.runtime_minutes %}{{ film.runtime_minutes }} min · {% endif %}OV/OmU in Bielefeld">
+<meta property="og:type" content="video.movie">
+{% if film.poster_url %}<meta property="og:image" content="{{ film.poster_url }}">{% endif %}
+{% endblock %}
 
 {% block content %}
 <a href="/" class="back-link">← Zurück zur Übersicht</a>
 
+<article>
 <div class="film-detail-header">
     <div class="film-detail-poster">
         {% if film.poster_url %}
         <img src="{{ film.poster_url }}" alt="{{ film.title_display }}">
         {% else %}
-        <div class="film-detail-no-poster">🎬</div>
+        <div class="film-detail-no-poster" aria-hidden="true">🎬</div>
         {% endif %}
     </div>
     <div class="film-detail-info">
@@ -23,9 +31,9 @@
         <div class="film-meta film-detail-meta">
             {% if film.release_year %}{{ film.release_year }}{% endif %}
             {% if film.runtime_minutes %}<span class="separator">·</span> {{ film.runtime_minutes }} min{% endif %}
-            {% if film.original_language %}<span class="separator">·</span> <img src="/images/{{ film.original_language }}.svg" alt="{{ film.original_language | upper }}" class="lang-flag" title="{{ film.original_language | upper }}">{% endif %}
-            {% if film.imdb_rating %}<span class="separator">·</span> <span class="imdb-rating">★ {{ film.imdb_rating }}</span>{% if film.imdb_votes %} <span class="imdb-votes">({{ film.imdb_votes | votes_fmt }})</span>{% endif %}{% endif %}
-            {% if film.rt_score is not none and film.rt_score != "" %}<span class="separator">·</span> <span class="rt-score">🍅 {{ film.rt_score }}%</span>{% endif %}
+            {% if film.original_language %}<span class="separator">·</span> <img src="/images/{{ film.original_language }}.svg" alt="{{ film.original_language | upper }}" class="lang-flag" title="{{ film.original_language | upper }}" onerror="this.style.display='none'">{% endif %}
+            {% if film.imdb_rating %}<span class="separator">·</span> <span class="imdb-rating" title="IMDb-Bewertung">★ {{ film.imdb_rating }}</span>{% if film.imdb_votes %} <span class="imdb-votes">({{ film.imdb_votes | votes_fmt }})</span>{% endif %}{% endif %}
+            {% if film.rt_score is not none and film.rt_score != "" %}<span class="separator">·</span> <span class="rt-score" title="Rotten Tomatoes">🍅 {{ film.rt_score }}%</span>{% endif %}
         </div>
 
         <div class="film-detail-links">
@@ -49,14 +57,15 @@
 <h2 class="detail-section-heading">Vorstellungen</h2>
 
 {% if showtimes_by_date %}
-<table class="showtime-table">
+<div class="showtime-table-wrapper">
+<table class="showtime-table" aria-label="Vorstellungen">
     <thead>
         <tr>
-            <th>Datum</th>
-            <th>Uhrzeit</th>
-            <th>Kino</th>
-            <th>Version</th>
-            <th></th>
+            <th scope="col">Datum</th>
+            <th scope="col">Uhrzeit</th>
+            <th scope="col">Kino</th>
+            <th scope="col">Version</th>
+            <th scope="col"><span class="sr-only">Tickets</span></th>
         </tr>
     </thead>
     <tbody>
@@ -66,7 +75,7 @@
                 <td>{{ st.showtime | date_de }}</td>
                 <td class="showtime-time">{{ st.showtime | time_hm }}</td>
                 <td>
-                    <span class="cinema-dot {{ st.cinema }}"></span>
+                    <span class="cinema-dot {{ st.cinema }}" aria-hidden="true"></span>
                     {{ cinema_names.get(st.cinema, st.cinema) }}
                 </td>
                 <td>
@@ -84,8 +93,9 @@
         {% endfor %}
     </tbody>
 </table>
+</div>
 {% else %}
 <p class="no-showtimes">Keine kommenden Vorstellungen.</p>
 {% endif %}
-
+</article>
 {% endblock %}
