@@ -17,7 +17,7 @@ LOG_DIR: str = os.environ.get("KINO_LOG_DIR", "logs")
 
 # ── Web server ────────────────────────────────────────────────────────────────
 PORT: int = int(os.environ.get("PORT", "8000"))
-WEBAPP_URL: str = os.environ.get("WEBAPP_URL", "http://localhost:8000")
+WEBAPP_URL: str = os.environ.get("WEBAPP_URL", "http://localhost:8000").rstrip("/")
 
 # ── TMDb ──────────────────────────────────────────────────────────────────────
 TMDB_API_KEY: str = os.environ.get("TMDB_API_KEY", "")

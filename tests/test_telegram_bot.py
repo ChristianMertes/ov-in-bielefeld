@@ -196,6 +196,19 @@ def test_notify_new_film_includes_webapp_link(tg_db, monkeypatch):
     assert "https://kino.example.com/film/" in msg
 
 
+def test_notify_new_film_no_double_slash_in_link(tg_db, monkeypatch):
+    """WEBAPP_URL with trailing slash must not produce //film/ in the link."""
+    monkeypatch.setattr(telegram_bot, "BOT_TOKEN", "fake")
+    monkeypatch.setattr(telegram_bot, "CHAT_ID", "123")
+    monkeypatch.setattr(telegram_bot, "WEBAPP_URL", "https://kino.example.com/")
+    film_id = _insert_film(tg_db, title="Slash Film", imdb_id="tt0004")
+    with patch("telegram_bot.send_message", return_value=True) as mock_send:
+        notify_new_film(film_id)
+    msg = mock_send.call_args[0][0]
+    assert "//film/" not in msg
+    assert "https://kino.example.com/film/" in msg
+
+
 # ── notify_all_pending ───────────────────────────────────────────────────────
 
 def test_notify_all_pending_sends_for_unnotified(tg_db, monkeypatch):

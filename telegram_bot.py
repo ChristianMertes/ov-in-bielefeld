@@ -109,7 +109,7 @@ def notify_new_film(film_id: int, film_data: dict | None = None) -> None:
         link_parts = []
         if imdb_id:
             link_parts.append(f'<a href="{get_imdb_url(imdb_id)}">IMDb</a>')
-        link_parts.append(f'<a href="{WEBAPP_URL}/film/{film_id}">Details</a>')
+        link_parts.append(f'<a href="{WEBAPP_URL.rstrip("/")}/film/{film_id}">Details</a>')
         lines.append(" · ".join(link_parts))
 
         message = "\n".join(lines)
