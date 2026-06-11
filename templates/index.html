@@ -71,6 +71,7 @@
                         {% for st in cinema_showtimes | sort(attribute="showtime") %}
                         <a href="{{ st.booking_url or '#' }}"
                            class="showtime-chip"
+                           {% if st.relative_label %}data-tooltip="{{ st.relative_label }}"{% endif %}
                            {% if st.booking_url %}target="_blank" rel="noopener"{% endif %}
                            aria-label="{{ st.showtime | date_de }} {{ st.showtime | time_hm }}{% if st.language_tag %} {{ st.language_tag }}{% endif %} — {{ cinema_names.get(cinema_key, cinema_key) }}">
                             <span class="date">{{ st.showtime | date_de }}</span>

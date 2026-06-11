@@ -154,7 +154,8 @@ h1 span {
     border-color: var(--accent-dim);
 }
 
-.film-card[data-tooltip]:hover::after {
+.film-card[data-tooltip]:hover::after,
+.showtime-chip[data-tooltip]:hover::after {
     content: attr(data-tooltip);
     position: absolute;
     bottom: calc(100% + 6px);

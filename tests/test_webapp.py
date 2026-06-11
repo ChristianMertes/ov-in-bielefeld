@@ -165,6 +165,22 @@ def test_index_shows_film_count(client_with_film):
     assert "1 Film" in resp.text
 
 
+def test_index_showtime_chip_has_relative_tooltip(client_with_film):
+    """Each showtime chip should carry a relative-date tooltip like the card's
+    'nächste Vorstellung' tooltip (e.g. 'morgen 20:00 Uhr')."""
+    client, _ = client_with_film
+    resp = client.get("/", headers={"Accept-Encoding": "gzip"})
+    # _future(1) is tomorrow → chip tooltip must start with "morgen"
+    assert 'data-tooltip="morgen ' in resp.text
+
+
+def test_index_card_tooltip_unaffected_by_chip_tooltips(client_with_film):
+    """The card-level 'nächste Vorstellung' tooltip must still be present."""
+    client, _ = client_with_film
+    resp = client.get("/", headers={"Accept-Encoding": "gzip"})
+    assert 'data-tooltip="nächste Vorstellung: morgen ' in resp.text
+
+
 # ── film detail route ─────────────────────────────────────────────────────────
 
 def test_film_detail_not_found(client):

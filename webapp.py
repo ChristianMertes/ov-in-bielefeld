@@ -216,9 +216,12 @@ async def index(
                 by_date[date_key].append(st)
 
             film_dict["showtimes_by_date"] = dict(sorted(by_date.items()))
-            film_dict["showtimes_list"] = [
-                st for st in showtimes if _is_future(st.get("showtime", ""), now)
-            ]
+            future_showtimes = []
+            for st in showtimes:
+                if _is_future(st.get("showtime", ""), now):
+                    st["relative_label"] = _next_showtime_label(st.get("showtime", ""), now)
+                    future_showtimes.append(st)
+            film_dict["showtimes_list"] = future_showtimes
             film_dict["cinema_list"] = (
                 f["cinemas"].split(",") if f["cinemas"] else []
             )
