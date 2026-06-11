@@ -26,6 +26,21 @@ services:
       web:
         condition: service_healthy
 
+  # Long-polling loop so bot commands (/programm etc.) work in the group
+  bot:
+    build: .
+    volumes:
+      - db-data:/data
+      - log-data:/app/logs
+    env_file: .env
+    environment:
+      KINO_DB_PATH: /data/kino_ov.db
+    restart: unless-stopped
+    command: uv run python telegram_bot.py
+    depends_on:
+      web:
+        condition: service_healthy
+
 volumes:
   db-data:
   log-data:

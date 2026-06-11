@@ -354,3 +354,36 @@ def test_process_update_correct_chat_id_handled(monkeypatch):
     with patch("telegram_bot.send_message") as mock_send:
         _process_update(update)
     mock_send.assert_called_once()
+
+
+# ── group chat support ────────────────────────────────────────────────────────
+# When CHAT_ID is a group (negative ID), commands from that group must work.
+# In groups, Telegram delivers commands with the bot username appended
+# ("/programm@KinoOVBot"), so command matching must tolerate the suffix.
+
+def test_process_update_group_chat_id_handled(monkeypatch):
+    monkeypatch.setattr(telegram_bot, "CHAT_ID", "-100123456789")
+    update = {"message": {"text": "/info", "chat": {"id": -100123456789}}}
+    with patch("telegram_bot.send_message") as mock_send:
+        _process_update(update)
+    mock_send.assert_called_once()
+
+
+def test_process_update_command_with_botname_suffix(tg_db, monkeypatch):
+    monkeypatch.setattr(telegram_bot, "CHAT_ID", "-4242")
+    monkeypatch.setattr(telegram_bot, "WEBAPP_URL", "https://kino.test")
+    _insert_film(tg_db, title="OV Film", imdb_id="tt0031")
+    update = {"message": {"text": "/programm@KinoOVBot", "chat": {"id": -4242}}}
+    with patch("telegram_bot.send_message") as mock_send:
+        _process_update(update)
+    mock_send.assert_called_once()
+    assert "OV Film" in mock_send.call_args[0][0]
+
+
+def test_process_update_private_chat_ignored_when_group_configured(monkeypatch):
+    """With CHAT_ID set to a group, private chats must be ignored."""
+    monkeypatch.setattr(telegram_bot, "CHAT_ID", "-100123456789")
+    update = {"message": {"text": "/start", "chat": {"id": 42}}}
+    with patch("telegram_bot.send_message") as mock_send:
+        _process_update(update)
+    mock_send.assert_not_called()
