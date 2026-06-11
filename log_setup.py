@@ -38,7 +38,7 @@ def setup_logging(level: int = logging.INFO) -> None:
     root.setLevel(level)
     fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 
-    # stderr — Docker / systemd capture this
+    # stderr – Docker / systemd capture this
     stream_handler = logging.StreamHandler()
     stream_handler.setFormatter(fmt)
     root.addHandler(stream_handler)

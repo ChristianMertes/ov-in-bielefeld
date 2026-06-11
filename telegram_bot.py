@@ -1,8 +1,8 @@
 """Telegram bot that notifies about new OV/OmU films.
 
 Set environment variables:
-  TELEGRAM_BOT_TOKEN  — from @BotFather
-  TELEGRAM_CHAT_ID    — your personal chat ID (use @userinfobot to find it)
+  TELEGRAM_BOT_TOKEN  – from @BotFather
+  TELEGRAM_CHAT_ID    – your personal chat ID (use @userinfobot to find it)
 
 The bot can be run in two modes:
 1. As a standalone long-polling bot (for receiving commands)
@@ -98,7 +98,7 @@ def notify_new_film(film_id: int, film_data: dict | None = None) -> None:
 
                 cinema = st["cinema"].capitalize()
                 tag = f" [{st['language_tag']}]" if st["language_tag"] else ""
-                lines.append(f"  {date_str} {time_str} — {cinema}{tag}")
+                lines.append(f"  {date_str} {time_str} – {cinema}{tag}")
 
             if len(showtimes) > 8:
                 lines.append(f"  ... und {len(showtimes) - 8} weitere")
@@ -207,8 +207,8 @@ def _process_update(update: dict) -> None:
             "(Englisch/Französisch) ins Programm kommen.\n\n"
             f"Deine Chat-ID: <code>{chat_id}</code>\n\n"
             "Befehle:\n"
-            "/programm — Aktuelle OV/OmU-Filme\n"
-            "/info — Bot-Info",
+            "/programm – Aktuelle OV/OmU-Filme\n"
+            "/info – Bot-Info",
         )
 
     elif text.startswith("/programm"):
@@ -224,7 +224,7 @@ def _process_update(update: dict) -> None:
             title = _escape_html(f["title_display"])
             lang = (f["original_language"] or "").upper()
             cinemas = f["cinemas"] or ""
-            lines.append(f"• <b>{title}</b> [{lang}] — {cinemas}")
+            lines.append(f"• <b>{title}</b> [{lang}] – {cinemas}")
 
         if len(films) > 15:
             lines.append(f"\n... und {len(films) - 15} weitere.")

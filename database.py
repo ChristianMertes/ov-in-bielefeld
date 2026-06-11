@@ -32,7 +32,7 @@ def get_db() -> Iterator[sqlite3.Connection]:
 
 def init_db() -> None:
     with get_db() as db:
-        # Fresh-install schema: no UNIQUE(title_display) — identity is managed
+        # Fresh-install schema: no UNIQUE(title_display) – identity is managed
         # via partial indexes created below (idx_films_tmdb_id / idx_films_title_year).
         db.executescript("""
             CREATE TABLE IF NOT EXISTS films (
@@ -151,7 +151,7 @@ def init_db() -> None:
             finally:
                 db.execute("PRAGMA foreign_keys=ON")
 
-        # Column and index migrations (idempotent — errors mean already applied)
+        # Column and index migrations (idempotent – errors mean already applied)
         for stmt in [
             "ALTER TABLE films ADD COLUMN title_de TEXT",
             "ALTER TABLE tmdb_cache ADD COLUMN title_de TEXT",
@@ -175,9 +175,9 @@ def upsert_film(db: sqlite3.Connection, title_display: str, **kwargs) -> tuple[i
     """Insert or update a film. Returns (film_id, is_new).
 
     Identity is resolved in priority order:
-    1. tmdb_id — canonical, most reliable
-    2. (title_display, release_year) with tmdb_id IS NULL — natural key fallback
-    3. (title_display, year=NULL, tmdb_id=NULL) — provisional row, upgradeable
+    1. tmdb_id – canonical, most reliable
+    2. (title_display, release_year) with tmdb_id IS NULL – natural key fallback
+    3. (title_display, year=NULL, tmdb_id=NULL) – provisional row, upgradeable
 
     This prevents two remakes / re-releases with the same display title from
     collapsing into one row once TMDb IDs or release years are available.
@@ -187,7 +187,7 @@ def upsert_film(db: sqlite3.Connection, title_display: str, **kwargs) -> tuple[i
 
     existing = None
 
-    # Priority 1: canonical identity — TMDb ID
+    # Priority 1: canonical identity – TMDb ID
     if tmdb_id is not None:
         existing = db.execute(
             "SELECT id FROM films WHERE tmdb_id = ?", (tmdb_id,)
@@ -200,7 +200,7 @@ def upsert_film(db: sqlite3.Connection, title_display: str, **kwargs) -> tuple[i
             (title_display, release_year),
         ).fetchone()
 
-    # Priority 3: provisional row — same title, no year, no tmdb_id yet
+    # Priority 3: provisional row – same title, no year, no tmdb_id yet
     # (will be upgraded to a real identity on the next scrape once enrichment succeeds)
     if existing is None:
         existing = db.execute(

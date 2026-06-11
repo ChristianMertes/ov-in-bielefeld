@@ -24,7 +24,7 @@ _access_log = logging.getLogger("access")
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     setup_logging()
     # Redirect uvicorn's loggers through our root logger (timestamps, log file).
-    # Suppress uvicorn.access specifically — our middleware produces richer logs.
+    # Suppress uvicorn.access specifically – our middleware produces richer logs.
     for _name in ("uvicorn", "uvicorn.error"):
         _uv = logging.getLogger(_name)
         _uv.handlers.clear()

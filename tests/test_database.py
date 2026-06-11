@@ -318,7 +318,7 @@ def test_get_upcoming_films_next_showtime_is_earliest(db):
 def test_get_upcoming_films_excludes_past_showtimes_from_aggregation(db):
     """Past showtimes don't appear in cinemas/language_tags even if film has future ones."""
     film_id, _ = upsert_film(db, "Mixed Time Film")
-    upsert_showtime(db, film_id, "cinemaxx", _past(1), "OV")   # past — should be ignored
+    upsert_showtime(db, film_id, "cinemaxx", _past(1), "OV")   # past – should be ignored
     upsert_showtime(db, film_id, "lichtwerk", _future(1), "OmU")
     db.commit()
 

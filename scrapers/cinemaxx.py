@@ -1,16 +1,16 @@
 """Scraper for CinemaxX Bielefeld.
 
 Two-step API approach:
-  Step 1 — Film list with OV/language attributes:
+  Step 1 – Film list with OV/language attributes:
     GET /api/microservice/showings/films
         ?cinemaId=1336&minEmbargoLevel=2&includeSessionAttributes=true
     Returns all films; `sessionAttributes` and `filmAttributes` tell us
     which films have OV/English/French showings.
 
-  Step 2 — Session times for OV films:
+  Step 2 – Session times for OV films:
     GET /api/microservice/showings/cinemas/1336/films/{filmId}/showingGroups
     Returns concrete showtimes grouped by date.
-    Each session has its own `attributes` array — we keep only sessions
+    Each session has its own `attributes` array – we keep only sessions
     that are English/French OV/OmU.
 
 OV/OmU detection:
@@ -189,7 +189,7 @@ def _has_language(attrs: list, target_langs: set) -> bool:
 
     Only matches on the `value` field (e.g., "english", "french"),
     NOT on the name (which could be "Englische Untertitel" or
-    "Japanese Audio with English Subtitles" — false positives).
+    "Japanese Audio with English Subtitles" – false positives).
     """
     for attr in attrs:
         if not isinstance(attr, dict):

@@ -50,12 +50,12 @@ def test_clean_removes_year_in_parens():
 
 
 def test_clean_preserves_die_hard():
-    """German article stripping was removed — 'Die Hard' must survive."""
+    """German article stripping was removed – 'Die Hard' must survive."""
     assert _clean_title_for_search("Die Hard") == "Die Hard"
 
 
 def test_clean_preserves_das_boot():
-    """Das Boot is both the German and English title — must survive."""
+    """Das Boot is both the German and English title – must survive."""
     assert _clean_title_for_search("Das Boot") == "Das Boot"
 
 

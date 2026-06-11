@@ -81,7 +81,7 @@ def scrape_arthouse() -> list[dict]:
         if film.get("detail_url") and not film.get("release_year"):
             try:
                 detail = _fetch_film_detail(film["detail_url"])
-                # Store separately — don't overwrite release_year; used as a retry hint
+                # Store separately – don't overwrite release_year; used as a retry hint
                 if detail.get("year"):
                     film["_arthouse_year"] = detail["year"]
                 if detail.get("director"):

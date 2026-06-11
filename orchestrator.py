@@ -157,12 +157,12 @@ def _enrich_with_tmdb(film_data: dict) -> dict | None:
         tmdb_data = _try_lookup(title, year)
 
     # If arthouse detail page gave us a year, check for year mismatch.
-    # A large discrepancy means TMDb found the wrong film — retry with the correct year.
+    # A large discrepancy means TMDb found the wrong film – retry with the correct year.
     if tmdb_data and arthouse_year:
         tmdb_year = tmdb_data.get("release_year")
         if tmdb_year and abs(tmdb_year - arthouse_year) > 3:
             logger.debug(
-                "Year mismatch for '%s': TMDb=%s, arthouse=%s — retrying", title, tmdb_year, arthouse_year
+                "Year mismatch for '%s': TMDb=%s, arthouse=%s – retrying", title, tmdb_year, arthouse_year
             )
             retry = _try_lookup(title, arthouse_year)
             tmdb_data = retry  # May be None if correct film not on TMDb
@@ -201,7 +201,7 @@ def _write_film(db: sqlite3.Connection, film_data: dict) -> tuple[int, bool]:
             "tmdb_popularity": tmdb_data.get("tmdb_popularity"),
         })
     else:
-        # No TMDb match — use scraper metadata as fallback
+        # No TMDb match – use scraper metadata as fallback
         year = film_data.get("release_year")
         if year:
             kwargs["release_year"] = year
