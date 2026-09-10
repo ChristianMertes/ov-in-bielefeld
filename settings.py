@@ -28,3 +28,11 @@ OMDB_API_KEY: str | None = os.environ.get("OMDB_API_KEY")
 # ── Telegram ──────────────────────────────────────────────────────────────────
 TELEGRAM_BOT_TOKEN: str | None = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID: str | None = os.environ.get("TELEGRAM_CHAT_ID")
+
+# ── Display names ───────────────────────────────────────────────────────────────
+# Brand-correct display names for cinema keys (shared by webapp and telegram bot).
+CINEMA_DISPLAY_NAMES: dict[str, str] = {
+    "lichtwerk": "Lichtwerk",
+    "kamera": "Kamera",
+    "cinemaxx": "CinemaxX",
+}

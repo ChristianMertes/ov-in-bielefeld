@@ -3,24 +3,23 @@
 {% block header_extra %}
 <nav class="filters-group" aria-label="Filter und Sortierung">
     <div class="filters" role="group" aria-label="Kino-Filter">
-        <a href="/?sort={{ sort }}{% if lang_filter %}&lang={{ lang_filter }}{% endif %}" class="filter-btn {% if not cinema_filter %}active{% endif %}">Alle Kinos</a>
+        <a href="/?sort={{ sort }}{% if lang_filter %}&lang={{ lang_filter }}{% endif %}" class="filter-btn {% if not cinema_filter %}active{% endif %}"{% if not cinema_filter %} aria-current="page"{% endif %}>Alle Kinos</a>
         {% for key, name in cinema_names.items() %}
-        <a href="/?cinema={{ key }}&sort={{ sort }}{% if lang_filter %}&lang={{ lang_filter }}{% endif %}" class="filter-btn {% if cinema_filter == key %}active{% endif %}">{{ name }}</a>
+        <a href="/?cinema={{ key }}&sort={{ sort }}{% if lang_filter %}&lang={{ lang_filter }}{% endif %}" class="filter-btn {% if cinema_filter == key %}active{% endif %}"{% if cinema_filter == key %} aria-current="page"{% endif %}>{{ name }}</a>
         {% endfor %}
     </div>
     <div class="filters" role="group" aria-label="Sprach-Filter">
-        <a href="/?sort={{ sort }}{% if cinema_filter %}&cinema={{ cinema_filter }}{% endif %}" class="filter-btn {% if not lang_filter %}active{% endif %}">Alle Sprachen</a>
+        <a href="/?sort={{ sort }}{% if cinema_filter %}&cinema={{ cinema_filter }}{% endif %}" class="filter-btn {% if not lang_filter %}active{% endif %}"{% if not lang_filter %} aria-current="page"{% endif %}>Alle Sprachen</a>
         {% for key, name in language_names.items() %}
-        <a href="/?lang={{ key }}&sort={{ sort }}{% if cinema_filter %}&cinema={{ cinema_filter }}{% endif %}" class="filter-btn {% if lang_filter == key %}active{% endif %}"><img src="/images/{{ key }}.svg" alt="" class="lang-flag" onerror="this.style.display='none'"> {{ name }}</a>
+        <a href="/?lang={{ key }}&sort={{ sort }}{% if cinema_filter %}&cinema={{ cinema_filter }}{% endif %}" class="filter-btn {% if lang_filter == key %}active{% endif %}"{% if lang_filter == key %} aria-current="page"{% endif %}><img src="/images/{{ key }}.svg" alt="" class="lang-flag" onerror="this.style.display='none'"> {{ name }}</a>
         {% endfor %}
     </div>
     <div class="filters" role="group" aria-label="Sortierung">
-        <span class="filters-label">Sortieren</span>
-        <a href="/?sort=date{% if cinema_filter %}&cinema={{ cinema_filter }}{% endif %}{% if lang_filter %}&lang={{ lang_filter }}{% endif %}" class="filter-btn {% if sort == 'date' %}active{% endif %}">nach Datum</a>
-        <a href="/?sort=title{% if cinema_filter %}&cinema={{ cinema_filter }}{% endif %}{% if lang_filter %}&lang={{ lang_filter }}{% endif %}" class="filter-btn {% if sort == 'title' %}active{% endif %}">nach Titel</a>
-        <a href="/?sort=rating{% if cinema_filter %}&cinema={{ cinema_filter }}{% endif %}{% if lang_filter %}&lang={{ lang_filter }}{% endif %}" class="filter-btn {% if sort == 'rating' %}active{% endif %}">nach IMDb</a>
-        <a href="/?sort=rt{% if cinema_filter %}&cinema={{ cinema_filter }}{% endif %}{% if lang_filter %}&lang={{ lang_filter }}{% endif %}" class="filter-btn {% if sort == 'rt' %}active{% endif %}">nach Tomatometer</a>
-        <a href="/?sort=popularity{% if cinema_filter %}&cinema={{ cinema_filter }}{% endif %}{% if lang_filter %}&lang={{ lang_filter }}{% endif %}" class="filter-btn {% if sort == 'popularity' %}active{% endif %}">nach Popularität</a>
+        <a href="/?sort=date{% if cinema_filter %}&cinema={{ cinema_filter }}{% endif %}{% if lang_filter %}&lang={{ lang_filter }}{% endif %}" class="filter-btn {% if sort == 'date' %}active{% endif %}"{% if sort == 'date' %} aria-current="page"{% endif %}>nach Datum</a>
+        <a href="/?sort=title{% if cinema_filter %}&cinema={{ cinema_filter }}{% endif %}{% if lang_filter %}&lang={{ lang_filter }}{% endif %}" class="filter-btn {% if sort == 'title' %}active{% endif %}"{% if sort == 'title' %} aria-current="page"{% endif %}>nach Titel</a>
+        <a href="/?sort=rating{% if cinema_filter %}&cinema={{ cinema_filter }}{% endif %}{% if lang_filter %}&lang={{ lang_filter }}{% endif %}" class="filter-btn {% if sort == 'rating' %}active{% endif %}"{% if sort == 'rating' %} aria-current="page"{% endif %}>nach IMDb</a>
+        <a href="/?sort=rt{% if cinema_filter %}&cinema={{ cinema_filter }}{% endif %}{% if lang_filter %}&lang={{ lang_filter }}{% endif %}" class="filter-btn {% if sort == 'rt' %}active{% endif %}"{% if sort == 'rt' %} aria-current="page"{% endif %}>nach Tomatometer</a>
+        <a href="/?sort=popularity{% if cinema_filter %}&cinema={{ cinema_filter }}{% endif %}{% if lang_filter %}&lang={{ lang_filter }}{% endif %}" class="filter-btn {% if sort == 'popularity' %}active{% endif %}"{% if sort == 'popularity' %} aria-current="page"{% endif %}>nach Popularität</a>
     </div>
 </nav>
 {% endblock %}
@@ -30,7 +29,7 @@
 <p class="film-count">{{ films | length }} Film{% if films | length != 1 %}e{% endif %}</p>
 <div class="film-list" role="list">
     {% for film in films %}
-    <article class="film-card" role="listitem"{% if film.next_showtime_label %} data-tooltip="nächste Vorstellung: {{ film.next_showtime_label }}"{% endif %}>
+    <article class="film-card" role="listitem"{% if film.next_showtime_label %} data-tooltip="nächste Vorstellung: {{ film.next_showtime_label }}" title="nächste Vorstellung: {{ film.next_showtime_label }}" aria-label="{{ film.title_display }} – nächste Vorstellung: {{ film.next_showtime_label }}"{% endif %}>
         <div class="film-poster">
             {% if film.poster_url %}
             <img src="{{ film.poster_url }}" alt="{{ film.title_display }}" loading="lazy">
@@ -69,10 +68,11 @@
                     <span class="cinema-label {{ cinema_key }}">{{ cinema_names.get(cinema_key, cinema_key) }}</span>
                     <div class="chips">
                         {% for st in cinema_showtimes | sort(attribute="showtime") %}
-                        <a href="{{ st.booking_url or '#' }}"
+                        {% if st.booking_url %}
+                        <a href="{{ st.booking_url }}"
                            class="showtime-chip"
                            {% if st.relative_label %}data-tooltip="{{ st.relative_label }}"{% endif %}
-                           {% if st.booking_url %}target="_blank" rel="noopener"{% endif %}
+                           target="_blank" rel="noopener"
                            aria-label="{{ st.showtime | date_de }} {{ st.showtime | time_hm }}{% if st.language_tag %} {{ st.language_tag }}{% endif %} – {{ cinema_names.get(cinema_key, cinema_key) }}">
                             <span class="date">{{ st.showtime | date_de }}</span>
                             <span class="time">{{ st.showtime | time_hm }}</span>
@@ -80,6 +80,17 @@
                             <span class="tag tag-{{ st.language_tag | lower }}">{{ st.language_tag }}</span>
                             {% endif %}
                         </a>
+                        {% else %}
+                        <span class="showtime-chip showtime-chip--static"
+                           {% if st.relative_label %}data-tooltip="{{ st.relative_label }}"{% endif %}
+                           aria-label="{{ st.showtime | date_de }} {{ st.showtime | time_hm }}{% if st.language_tag %} {{ st.language_tag }}{% endif %} – {{ cinema_names.get(cinema_key, cinema_key) }}">
+                            <span class="date">{{ st.showtime | date_de }}</span>
+                            <span class="time">{{ st.showtime | time_hm }}</span>
+                            {% if st.language_tag %}
+                            <span class="tag tag-{{ st.language_tag | lower }}">{{ st.language_tag }}</span>
+                            {% endif %}
+                        </span>
+                        {% endif %}
                         {% endfor %}
                     </div>
                 </div>

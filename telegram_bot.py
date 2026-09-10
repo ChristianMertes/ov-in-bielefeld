@@ -16,6 +16,7 @@ import requests
 
 import settings
 from database import get_db, get_film_by_id, get_film_showtimes, get_new_unnotified_films, get_upcoming_films, mark_film_notified
+from settings import CINEMA_DISPLAY_NAMES
 from tmdb_client import get_imdb_url
 
 logger = logging.getLogger(__name__)
@@ -96,7 +97,7 @@ def notify_new_film(film_id: int, film_data: dict | None = None) -> None:
                     date_str = "?"
                     time_str = "?"
 
-                cinema = st["cinema"].capitalize()
+                cinema = CINEMA_DISPLAY_NAMES.get(st["cinema"].lower(), st["cinema"].title())
                 tag = f" [{st['language_tag']}]" if st["language_tag"] else ""
                 lines.append(f"  {date_str} {time_str} – {cinema}{tag}")
 

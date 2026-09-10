@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 import cache
+import settings
 from database import get_db, get_film_by_id, get_film_showtimes, get_showtimes_for_films, get_upcoming_films, init_db
 from log_setup import setup_logging
 from tmdb_client import get_imdb_url, get_omdb_url, get_tmdb_url
@@ -164,11 +165,7 @@ def _supports_brotli(request: Request) -> bool:
     return "br" in request.headers.get("Accept-Encoding", "")
 
 
-CINEMA_DISPLAY_NAMES = {
-    "lichtwerk": "Lichtwerk",
-    "kamera": "Kamera",
-    "cinemaxx": "CinemaxX",
-}
+CINEMA_DISPLAY_NAMES = settings.CINEMA_DISPLAY_NAMES
 
 LANGUAGE_DISPLAY_NAMES = {
     "en": "Englisch",
@@ -332,8 +329,8 @@ async def robots_txt() -> str:
 
 
 @app.get("/sitemap.xml")
-async def sitemap_xml(request: Request) -> Response:
-    base = str(request.base_url).rstrip("/")
+async def sitemap_xml() -> Response:
+    base = settings.WEBAPP_URL
     urls = [base + "/"]
     with get_db() as db:
         films = get_upcoming_films(db)

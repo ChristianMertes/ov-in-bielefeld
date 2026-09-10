@@ -1,6 +1,7 @@
 """Client for fetching film ratings from external APIs."""
 import contextlib
 import logging
+import re
 
 import requests
 
@@ -10,6 +11,14 @@ logger = logging.getLogger(__name__)
 
 RATINGS_API = "https://api.agregarr.org/api/ratings"
 OMDB_API = "https://www.omdbapi.com/"
+
+
+def _redact(e: Exception) -> str:
+    """Stringify an exception, redacting any API key in URL query params.
+
+    Handles the empty-key case naturally: a missing key simply won't match.
+    """
+    return re.sub(r"(api_key|apikey)=[^&\s]+", r"\1=REDACTED", str(e), flags=re.IGNORECASE)
 
 
 def fetch_imdb_ratings(imdb_ids: list[str]) -> dict[str, dict]:
@@ -68,6 +77,6 @@ def fetch_rt_scores(imdb_ids: list[str]) -> dict[str, int]:
                         result[imdb_id] = int(rating["Value"].rstrip("%"))
                     break
         except requests.RequestException as e:
-            logger.error("OMDb fetch failed for %s: %s", imdb_id, e)
+            logger.error("OMDb fetch failed for %s: %s", imdb_id, _redact(e))
 
     return result

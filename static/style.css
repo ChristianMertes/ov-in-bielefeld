@@ -91,14 +91,6 @@ h1 span {
     justify-content: center;
 }
 
-.filters-label {
-    font-size: 0.78rem;
-    color: var(--text-muted);
-    text-transform: lowercase;
-    letter-spacing: 0.04em;
-    visibility: hidden;
-}
-
 .filter-btn {
     display: inline-block;
     padding: 0.35rem 0.85rem;
@@ -322,6 +314,15 @@ h1 span {
 .showtime-chip:hover {
     border-color: var(--accent);
     background: rgba(212, 168, 67, 0.08);
+}
+
+.showtime-chip--static {
+    cursor: default;
+}
+
+.showtime-chip--static:hover {
+    border-color: var(--border);
+    background: var(--bg-hover);
 }
 
 .showtime-chip .date {

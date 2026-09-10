@@ -14,7 +14,8 @@ Two-step API approach:
     that are English/French OV/OmU.
 
 OV/OmU detection:
-  - Language attribute with value "english" or "french"
+  - Language attribute value is in RELEVANT_LANGUAGES (see constant, currently:
+    english, englisch, french, französisch, francais)
   - Film/session attribute with value "ov" or "om-u"
 
 Booking URLs: relative (/buchtickets/...) → prefixed with https://www.cinemaxx.de
@@ -46,6 +47,15 @@ HEADERS = {
 
 # Language attribute values we care about
 RELEVANT_LANGUAGES = {"english", "englisch", "french", "französisch", "francais"}
+
+# Maps a matched language attribute value to a two-letter language code.
+_LANGUAGE_CODES = {
+    "english": "en",
+    "englisch": "en",
+    "french": "fr",
+    "französisch": "fr",
+    "francais": "fr",
+}
 
 # Attribute values indicating OV/OmU
 OV_VALUES = {"ov", "om-u", "omu", "omeu", "original-version"}
@@ -181,6 +191,7 @@ def _parse_film(film: dict) -> dict | None:
         "_poster_url": film.get("posterImageSrc"),
         "_genres": film.get("genres", []),
         "_lang_tag": lang_tag,
+        "_detected_language": _detect_language(all_attrs),
     }
 
 
@@ -201,6 +212,26 @@ def _has_language(attrs: list, target_langs: set) -> bool:
         if value in target_langs or short in target_langs:
             return True
     return False
+
+
+def _detect_language(attrs: list) -> str | None:
+    """Return the two-letter code ("en"/"fr") of the first matching Language attr.
+
+    Mirrors _has_language's matching rules (value/shortName only) and maps the
+    matched RELEVANT_LANGUAGES value to a language code. Returns None if no
+    relevant language attribute is present.
+    """
+    for attr in attrs:
+        if not isinstance(attr, dict):
+            continue
+        if attr.get("attributeType") != "Language":
+            continue
+        value = (attr.get("value") or "").lower().strip()
+        short = (attr.get("shortName") or "").lower().strip()
+        for candidate in (value, short):
+            if candidate in _LANGUAGE_CODES:
+                return _LANGUAGE_CODES[candidate]
+    return None
 
 
 def _has_ov_marker(attrs: list) -> bool:
