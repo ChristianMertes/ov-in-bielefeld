@@ -115,6 +115,25 @@ def test_upsert_film_updates_metadata(db):
     assert row["imdb_id"] == "tt1234567"
 
 
+def test_upsert_film_refreshes_display_title(db):
+    """A row keeps its identity but adopts the newer display title.
+
+    Needed so titles repaired by the scraper (mojibake) reach rows that
+    already exist; identity comes from tmdb_id, not from the title.
+    """
+    film_id, _ = upsert_film(db, "L\x92étranger \x96 Der Fremde", tmdb_id=1429348)
+    upsert_film(db, "L’étranger – Der Fremde", tmdb_id=1429348)
+    row = get_film_by_id(db, film_id)
+    assert row["title_display"] == "L’étranger – Der Fremde"
+
+
+def test_upsert_film_does_not_overwrite_display_title_with_empty(db):
+    film_id, _ = upsert_film(db, "Keeps Its Title", tmdb_id=555)
+    upsert_film(db, "", tmdb_id=555)
+    row = get_film_by_id(db, film_id)
+    assert row["title_display"] == "Keeps Its Title"
+
+
 def test_upsert_film_does_not_overwrite_with_none(db):
     film_id, _ = upsert_film(db, "Film With Data", imdb_id="tt9999999")
     upsert_film(db, "Film With Data")  # no imdb_id → should not overwrite

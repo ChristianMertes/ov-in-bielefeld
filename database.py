@@ -1,7 +1,7 @@
 """Database layer using SQLite."""
 import sqlite3
 from collections.abc import Iterator
-from contextlib import contextmanager, suppress
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 
 import settings
@@ -167,8 +167,10 @@ def init_db() -> None:
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_films_title_year"
             " ON films(title_display, release_year) WHERE tmdb_id IS NULL AND release_year IS NOT NULL",
         ]:
-            with suppress(Exception):
+            try:
                 db.execute(stmt)
+            except sqlite3.OperationalError:
+                pass
 
 
 def upsert_film(db: sqlite3.Connection, title_display: str, **kwargs) -> tuple[int, bool]:  # noqa: ANN003
@@ -212,6 +214,12 @@ def upsert_film(db: sqlite3.Connection, title_display: str, **kwargs) -> tuple[i
         film_id = existing["id"]
         updates = []
         values = []
+        # Refresh the display title too: identity comes from tmdb_id or the
+        # (title, year) key that already matched, so adopting the newer title
+        # lets scraper-side fixes (e.g. repaired mojibake) reach existing rows.
+        if title_display:
+            updates.append("title_display = ?")
+            values.append(title_display)
         for key in ("title_original", "title_de", "original_language", "tmdb_id", "imdb_id",
                     "poster_url", "overview", "release_year", "runtime_minutes", "tmdb_popularity"):
             if key in kwargs and kwargs[key] is not None:
