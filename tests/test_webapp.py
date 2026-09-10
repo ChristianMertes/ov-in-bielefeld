@@ -347,6 +347,33 @@ def test_api_films_hides_past_showtimes(client_mixed_showtimes, monkeypatch):
     assert "https://example.com/soon" not in urls
 
 
+def test_cached_page_stops_serving_a_showtime_that_passed(client_mixed_showtimes, monkeypatch):
+    """A showtime that starts must vanish even though no scrape ran in between.
+
+    The page cache is only invalidated by a scrape, and those run daily – so
+    without a TTL the morning render keeps showing showtimes all day.
+    """
+    import cache as _cache
+    import webapp
+    client, _ = client_mixed_showtimes
+
+    clock = [1000.0]
+    monkeypatch.setattr(_cache.time, "monotonic", lambda: clock[0])
+
+    # First request renders and caches while both showtimes are still upcoming
+    resp = client.get("/", headers={"Accept-Encoding": "gzip"})
+    assert "example.com/soon" in resp.text
+    assert _cache.get_plain("index:::date") is not None, "expected the page to be cached"
+
+    # Time passes the first showtime; the sentinel is untouched (no scrape)
+    monkeypatch.setattr(webapp, "datetime", _FakeDatetime)
+    clock[0] += _cache.TTL_SECONDS + 1
+
+    resp2 = client.get("/", headers={"Accept-Encoding": "gzip"})
+    assert "example.com/later" in resp2.text
+    assert "example.com/soon" not in resp2.text
+
+
 class _FakeDatetime(datetime):
     """datetime subclass whose now() returns BETWEEN, while fromisoformat still works."""
 

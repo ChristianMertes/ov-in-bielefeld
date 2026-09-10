@@ -86,6 +86,66 @@ def test_brotli_and_plain_stores_are_independent(tmp_path, monkeypatch):
     assert cache.get("page2") is None  # brotli store untouched
 
 
+# ── expiry ───────────────────────────────────────────────────────────────────
+# Without a TTL, a page rendered right after the 6am scrape is served all day,
+# so showtimes that have since passed stay on screen no matter how often the
+# visitor reloads.
+
+def test_entry_expires_after_ttl(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "DB_PATH", str(tmp_path / "kino.db"))
+    _reset()
+    clock = [1000.0]
+    monkeypatch.setattr(cache.time, "monotonic", lambda: clock[0])
+
+    cache.put("page", "<html>hi</html>")
+    assert cache.get("page") is not None
+
+    clock[0] += cache.TTL_SECONDS + 1
+    assert cache.get("page") is None
+
+
+def test_entry_survives_until_ttl(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "DB_PATH", str(tmp_path / "kino.db"))
+    _reset()
+    clock = [1000.0]
+    monkeypatch.setattr(cache.time, "monotonic", lambda: clock[0])
+
+    cache.put("page", "<html>hi</html>")
+    clock[0] += cache.TTL_SECONDS - 1
+    assert cache.get("page") is not None
+
+
+def test_plain_entry_expires_after_ttl(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "DB_PATH", str(tmp_path / "kino.db"))
+    _reset()
+    clock = [1000.0]
+    monkeypatch.setattr(cache.time, "monotonic", lambda: clock[0])
+
+    cache.put_plain("page", "<html>hi</html>")
+    assert cache.get_plain("page") is not None
+
+    clock[0] += cache.TTL_SECONDS + 1
+    assert cache.get_plain("page") is None
+
+
+def test_expired_entries_are_dropped_not_just_hidden(tmp_path, monkeypatch):
+    """An expired entry must not linger in the store and leak memory."""
+    monkeypatch.setattr(settings, "DB_PATH", str(tmp_path / "kino.db"))
+    _reset()
+    clock = [1000.0]
+    monkeypatch.setattr(cache.time, "monotonic", lambda: clock[0])
+
+    cache.put("page", "<html>hi</html>")
+    cache.put_plain("page", "<html>hi</html>")
+    clock[0] += cache.TTL_SECONDS + 1
+    cache.get("page")
+    cache.get_plain("page")
+
+    with cache._lock:
+        assert "page" not in cache._store
+        assert "page" not in cache._store_plain
+
+
 # ── invalidation ─────────────────────────────────────────────────────────────
 
 def test_invalidate_clears_both_stores(tmp_path, monkeypatch):

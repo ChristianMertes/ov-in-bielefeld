@@ -4,20 +4,31 @@ Cache entries are keyed by route + query parameters. Two parallel stores exist:
 - _store: Brotli-compressed bytes, served when client sends Accept-Encoding: br
 - _store_plain: raw UTF-8 bytes, served when client doesn't support Brotli
 
-Invalidation is cross-process: the orchestrator touches a sentinel file on the
-shared /data volume after each scrape; the webapp detects the mtime change and
-clears both stores on the next request.
+Entries expire two ways:
+- Cross-process invalidation: the orchestrator touches a sentinel file on the
+  shared /data volume after each scrape; the webapp detects the mtime change
+  and clears both stores on the next request.
+- TTL: rendered pages go stale on their own as showtimes pass and relative
+  date labels ("heute", "morgen") roll over, which no scrape announces. Since
+  scrapes only run daily, without a TTL the 6am render would be served all day
+  with showtimes that have long since started.
 """
 import threading
+import time
 from pathlib import Path
 
 import brotli  # type: ignore[import-untyped]
 
 import settings
 
+# Bounds how long a passed showtime can linger on screen. Re-rendering is a
+# SQLite query plus a Jinja pass, so a short TTL costs little.
+TTL_SECONDS = 60
+
 _lock = threading.Lock()
-_store: dict[str, bytes] = {}
-_store_plain: dict[str, bytes] = {}
+# key -> (expires_at from time.monotonic(), payload)
+_store: dict[str, tuple[float, bytes]] = {}
+_store_plain: dict[str, tuple[float, bytes]] = {}
 _version: float = -1.0
 
 
@@ -41,19 +52,34 @@ def _check_version(v: float) -> None:
         _version = v
 
 
+def _take_fresh(store: dict[str, tuple[float, bytes]], key: str) -> bytes | None:
+    """Return the entry's payload, dropping it if it has expired.
+
+    Must be called under _lock.
+    """
+    entry = store.get(key)
+    if entry is None:
+        return None
+    expires_at, payload = entry
+    if time.monotonic() >= expires_at:
+        del store[key]
+        return None
+    return payload
+
+
 def get(key: str) -> bytes | None:
     """Return cached Brotli bytes for key, or None if stale/absent."""
     v = _mtime()
     with _lock:
         _check_version(v)
-        return _store.get(key)
+        return _take_fresh(_store, key)
 
 
 def put(key: str, html: str) -> bytes:
     """Compress html, store under key, and return the compressed bytes."""
     compressed = brotli.compress(html.encode(), quality=6)
     with _lock:
-        _store[key] = compressed
+        _store[key] = (time.monotonic() + TTL_SECONDS, compressed)
     return compressed
 
 
@@ -62,14 +88,14 @@ def get_plain(key: str) -> bytes | None:
     v = _mtime()
     with _lock:
         _check_version(v)
-        return _store_plain.get(key)
+        return _take_fresh(_store_plain, key)
 
 
 def put_plain(key: str, html: str) -> bytes:
     """Encode html as UTF-8, store under key, and return the raw bytes."""
     raw = html.encode()
     with _lock:
-        _store_plain[key] = raw
+        _store_plain[key] = (time.monotonic() + TTL_SECONDS, raw)
     return raw
 
 
