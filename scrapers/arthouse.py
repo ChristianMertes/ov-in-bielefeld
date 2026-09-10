@@ -12,6 +12,8 @@ import requests
 from bs4 import BeautifulSoup, Tag
 from ftfy import TextFixerConfig, fix_text
 
+from timeutil import now_local
+
 logger = logging.getLogger(__name__)
 
 BASE_URL = "https://www.arthousekinos-bielefeld.de"
@@ -340,7 +342,7 @@ def _resolve_showtime_date(link_element: Tag, time_str: str) -> str:
 
 def _parse_german_date(header_text: str, time_str: str) -> str:
     """Parse German date header like 'Do, 12.03' or 'Heute' into ISO datetime."""
-    now = datetime.now()
+    now = now_local()
     current_year = now.year
 
     if header_text.lower() in ("heute",):
@@ -380,7 +382,7 @@ def _guess_date_from_context(element: Tag, time_str: str) -> str:
         if date_match:
             day = int(date_match.group(1))
             month = int(date_match.group(2))
-            year = int(date_match.group(3)) if date_match.group(3) else datetime.now().year
+            year = int(date_match.group(3)) if date_match.group(3) else now_local().year
             if year < 100:
                 year += 2000
             try:
@@ -393,7 +395,7 @@ def _guess_date_from_context(element: Tag, time_str: str) -> str:
 
     # Last resort: use today
     hour, minute = map(int, time_str.split(":"))
-    dt = datetime.now().replace(hour=hour, minute=minute, second=0, microsecond=0)
+    dt = now_local().replace(hour=hour, minute=minute, second=0, microsecond=0)
     return dt.isoformat()
 
 

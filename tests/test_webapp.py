@@ -1,5 +1,7 @@
 """Tests for the webapp routes using FastAPI TestClient."""
+import time
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 from fastapi.testclient import TestClient
@@ -316,7 +318,7 @@ def test_index_hides_past_showtimes(client_mixed_showtimes, monkeypatch):
     must not appear on the index page."""
     client, _ = client_mixed_showtimes
     import webapp
-    monkeypatch.setattr(webapp, "datetime", _FakeDatetime)
+    monkeypatch.setattr(webapp, "now_local", lambda: BETWEEN)
     resp = client.get("/", headers={"Accept-Encoding": "gzip"})
     assert resp.status_code == 200
     assert "example.com/later" in resp.text
@@ -327,7 +329,7 @@ def test_film_detail_hides_past_showtimes(client_mixed_showtimes, monkeypatch):
     """Same filtering on the film detail page."""
     client, film_id = client_mixed_showtimes
     import webapp
-    monkeypatch.setattr(webapp, "datetime", _FakeDatetime)
+    monkeypatch.setattr(webapp, "now_local", lambda: BETWEEN)
     resp = client.get(f"/film/{film_id}", headers={"Accept-Encoding": "gzip"})
     assert resp.status_code == 200
     assert "example.com/later" in resp.text
@@ -338,7 +340,7 @@ def test_api_films_hides_past_showtimes(client_mixed_showtimes, monkeypatch):
     """Same filtering on the JSON API."""
     client, _ = client_mixed_showtimes
     import webapp
-    monkeypatch.setattr(webapp, "datetime", _FakeDatetime)
+    monkeypatch.setattr(webapp, "now_local", lambda: BETWEEN)
     resp = client.get("/api/films")
     data = resp.json()
     assert len(data) == 1
@@ -366,7 +368,7 @@ def test_cached_page_stops_serving_a_showtime_that_passed(client_mixed_showtimes
     assert _cache.get_plain("index:::date") is not None, "expected the page to be cached"
 
     # Time passes the first showtime; the sentinel is untouched (no scrape)
-    monkeypatch.setattr(webapp, "datetime", _FakeDatetime)
+    monkeypatch.setattr(webapp, "now_local", lambda: BETWEEN)
     clock[0] += _cache.TTL_SECONDS + 1
 
     resp2 = client.get("/", headers={"Accept-Encoding": "gzip"})
@@ -374,9 +376,66 @@ def test_cached_page_stops_serving_a_showtime_that_passed(client_mixed_showtimes
     assert "example.com/soon" not in resp2.text
 
 
-class _FakeDatetime(datetime):
-    """datetime subclass whose now() returns BETWEEN, while fromisoformat still works."""
+# ── server timezone vs. cinema timezone ──────────────────────────────────────
+# The container runs in UTC while showtimes are Berlin wall-clock time. Without
+# cinema-local comparisons, a screening stays listed for the length of the UTC
+# offset (2h in summer) after it has started.
 
-    @classmethod
-    def now(cls, tz=None):  # noqa: ANN001
-        return BETWEEN
+needs_tzset = pytest.mark.skipif(
+    not hasattr(time, "tzset"), reason="TZ switching requires a Unix platform"
+)
+
+
+@pytest.fixture
+def utc_server(monkeypatch):
+    """Run the webapp process in UTC, as the Docker container does."""
+    monkeypatch.setenv("TZ", "UTC")
+    time.tzset()
+    yield
+    time.tzset()
+
+
+@pytest.fixture
+def client_showtime_just_started(tmp_path, monkeypatch, utc_server):
+    """A film whose only showtime started 30 minutes ago in Berlin."""
+    db_path = str(tmp_path / "test.db")
+    monkeypatch.setattr(database, "DB_PATH", db_path)
+    monkeypatch.setattr(settings, "DB_PATH", db_path)
+    import cache as _cache
+    with _cache._lock:
+        _cache._store.clear()
+        _cache._store_plain.clear()
+        _cache._version = -1.0
+
+    berlin_now = datetime.now(ZoneInfo("Europe/Berlin")).replace(tzinfo=None)
+    started = (berlin_now - timedelta(minutes=30)).replace(microsecond=0)
+    upcoming = (berlin_now + timedelta(days=1)).replace(microsecond=0)
+
+    with TestClient(app) as c:
+        from database import get_db
+        with get_db() as conn:
+            film_id, _ = upsert_film(conn, "Already Running", original_language="en")
+            upsert_showtime(conn, film_id, "lichtwerk", started.isoformat(),
+                            "OV", "https://example.com/started")
+            upsert_showtime(conn, film_id, "kamera", upcoming.isoformat(),
+                            "OmU", "https://example.com/upcoming")
+        yield c
+
+
+@needs_tzset
+def test_index_hides_showtime_that_started_when_server_runs_in_utc(
+    client_showtime_just_started,
+):
+    resp = client_showtime_just_started.get("/", headers={"Accept-Encoding": "gzip"})
+    assert "example.com/upcoming" in resp.text
+    assert "example.com/started" not in resp.text
+
+
+@needs_tzset
+def test_api_hides_showtime_that_started_when_server_runs_in_utc(
+    client_showtime_just_started,
+):
+    data = client_showtime_just_started.get("/api/films").json()
+    urls = [st["booking_url"] for f in data for st in f["showtimes"]]
+    assert "https://example.com/upcoming" in urls
+    assert "https://example.com/started" not in urls

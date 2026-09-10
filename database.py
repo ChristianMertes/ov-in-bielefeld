@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta
 
 import settings
+from timeutil import now_local
 
 DB_PATH = settings.DB_PATH
 
@@ -266,7 +267,7 @@ def upsert_showtime(db: sqlite3.Connection, film_id: int, cinema: str,
 
 def get_upcoming_films(db: sqlite3.Connection, cinema: str | None = None) -> list:
     """Get films with future showtimes, optionally filtered by cinema."""
-    now = datetime.now().isoformat()
+    now = now_local().isoformat()
     query = """
         SELECT DISTINCT f.*,
             MIN(s.showtime) as next_showtime,
@@ -286,7 +287,7 @@ def get_upcoming_films(db: sqlite3.Connection, cinema: str | None = None) -> lis
 
 def get_film_showtimes(db: sqlite3.Connection, film_id: int) -> list:
     """Get all future showtimes for a specific film."""
-    now = datetime.now().isoformat()
+    now = now_local().isoformat()
     return db.execute("""
         SELECT * FROM showtimes
         WHERE film_id = ? AND showtime >= ?
@@ -302,7 +303,7 @@ def get_showtimes_for_films(db: sqlite3.Connection, film_ids: list[int]) -> dict
     """
     if not film_ids:
         return {}
-    now = datetime.now().isoformat()
+    now = now_local().isoformat()
     placeholders = ",".join("?" * len(film_ids))
     rows = db.execute(
         f"SELECT * FROM showtimes WHERE film_id IN ({placeholders}) AND showtime >= ?"  # noqa: S608
@@ -371,7 +372,7 @@ def update_film_rt_score(db: sqlite3.Connection, film_id: int, rt_score: int) ->
 
 def cleanup_old_showtimes(db: sqlite3.Connection, days_old: int = 7) -> None:
     """Remove showtimes older than N days."""
-    cutoff = (datetime.now() - timedelta(days=days_old)).isoformat()
+    cutoff = (now_local() - timedelta(days=days_old)).isoformat()
     db.execute("DELETE FROM showtimes WHERE showtime < ?", (cutoff,))
     # Also remove films with no remaining showtimes
     db.execute("""

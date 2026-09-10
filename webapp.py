@@ -16,6 +16,7 @@ import cache
 import settings
 from database import get_db, get_film_by_id, get_film_showtimes, get_showtimes_for_films, get_upcoming_films, init_db
 from log_setup import setup_logging
+from timeutil import now_local
 from tmdb_client import get_imdb_url, get_omdb_url, get_tmdb_url
 
 _access_log = logging.getLogger("access")
@@ -190,7 +191,7 @@ async def index(
             headers["Content-Encoding"] = "br"
         return Response(content=cached, media_type="text/html; charset=utf-8", headers=headers)
 
-    now = datetime.now()
+    now = now_local()
     with get_db() as db:
         films_raw = get_upcoming_films(db, cinema=cinema)
         showtimes_by_film = get_showtimes_for_films(db, [f["id"] for f in films_raw])
@@ -280,7 +281,7 @@ async def film_detail(request: Request, film_id: int) -> Response:
             return HTMLResponse(html, status_code=404)
 
         showtimes = get_film_showtimes(db, film_id)
-        now = datetime.now()
+        now = now_local()
 
         # Group by date, dropping any that are in the past
         by_date = defaultdict(list)
@@ -335,7 +336,7 @@ async def sitemap_xml() -> Response:
     with get_db() as db:
         films = get_upcoming_films(db)
         urls.extend(f"{base}/film/{f['id']}" for f in films)
-    today = datetime.now().date().isoformat()
+    today = now_local().date().isoformat()
     url_entries = "\n".join(
         f"  <url><loc>{u}</loc><lastmod>{today}</lastmod></url>" for u in urls
     )
@@ -351,7 +352,7 @@ async def sitemap_xml() -> Response:
 @app.get("/api/films")
 async def api_films(cinema: str | None = None) -> list[dict[str, object]]:
     """JSON API endpoint for external consumption."""
-    now = datetime.now()
+    now = now_local()
     with get_db() as db:
         films = get_upcoming_films(db, cinema=cinema)
         showtimes_by_film = get_showtimes_for_films(db, [f["id"] for f in films])
