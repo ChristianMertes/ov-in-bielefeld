@@ -8,6 +8,7 @@ Processing happens in three distinct phases to avoid nested SQLite connections:
   Phase 3 – DB writes: single transaction for all film and showtime upserts
 """
 import logging
+import re
 import sqlite3
 from collections.abc import Callable
 from typing import Any
@@ -29,6 +30,37 @@ from scrapers.cinemaxx import scrape_cinemaxx
 from tmdb_client import is_relevant_language, lookup_film
 
 logger = logging.getLogger(__name__)
+
+# Arthouse joins the original and German title with a dash, e.g.
+# "Bir kar tanesinin ömrü – Die Lebensdauer einer Schneeflocke". Only a dash
+# surrounded by whitespace separates two titles; "Spider-Man" must stay intact.
+_TITLE_SEPARATOR = re.compile(r"\s+[-–—]\s+")
+
+# Shorter fragments ("Teil 2", "OV") are too ambiguous to search TMDb with.
+_MIN_TITLE_PART_LEN = 3
+
+
+def _title_candidates(title: str) -> list[str]:
+    """Return the TMDb search variants for a scraped title, most specific first.
+
+    Scraped titles carry section prefixes ("CINÉMA_FRANÇAIS: ...") and often
+    join two titles with a dash. TMDb knows the individual titles but not those
+    combinations, so the prefix-stripped and split forms are tried as fallbacks.
+    """
+    candidates = [title]
+    if ": " in title:
+        candidates.append(title.split(": ", 1)[1])
+
+    for base in list(candidates):
+        parts = [p.strip() for p in _TITLE_SEPARATOR.split(base, maxsplit=1)]
+        if len(parts) == 2:
+            candidates.extend(p for p in parts if len(p) >= _MIN_TITLE_PART_LEN)
+
+    unique = []
+    for candidate in candidates:
+        if candidate and candidate not in unique:
+            unique.append(candidate)
+    return unique
 
 
 def run_scrape(notify_callback: Callable[[int, dict], None] | None = None) -> dict[str, Any] | None:
@@ -144,11 +176,12 @@ def _enrich_with_tmdb(film_data: dict) -> dict | None:
     arthouse_year = film_data.get("_arthouse_year")  # From detail page scrape
 
     def _try_lookup(t: str, y: int | None) -> dict | None:
-        """Lookup, then retry with stripped prefix if needed."""
-        result = lookup_film(t, y)
-        if not result and ": " in t:
-            result = lookup_film(t.split(": ", 1)[1], y)
-        return result
+        """Try the title, then its prefix-stripped and dash-split variants."""
+        for candidate in _title_candidates(t):
+            result = lookup_film(candidate, y)
+            if result:
+                return result
+        return None
 
     tmdb_data = None
     if original_title and original_title.strip():
@@ -165,7 +198,8 @@ def _enrich_with_tmdb(film_data: dict) -> dict | None:
                 "Year mismatch for '%s': TMDb=%s, arthouse=%s – retrying", title, tmdb_year, arthouse_year
             )
             retry = _try_lookup(title, arthouse_year)
-            tmdb_data = retry  # May be None if correct film not on TMDb
+            if retry:  # May be None if correct film not on TMDb – keep original match
+                tmdb_data = retry
 
     if tmdb_data:
         orig_lang = tmdb_data.get("original_language", "")
@@ -211,6 +245,11 @@ def _write_film(db: sqlite3.Connection, film_data: dict) -> tuple[int, bool]:
             kwargs["title_original"] = film_data["_original_title"]
         if film_data.get("_poster_url"):
             kwargs["poster_url"] = film_data["_poster_url"]
+        # Scrapers that matched an explicit EN/FR language attribute expose it;
+        # persist it so the film stays visible under ?lang= filters even without
+        # a TMDb match. Arthouse films without a match leave this None by design.
+        if film_data.get("_detected_language"):
+            kwargs["original_language"] = film_data["_detected_language"]
 
     film_id, is_new = upsert_film(db, title, **kwargs)
 

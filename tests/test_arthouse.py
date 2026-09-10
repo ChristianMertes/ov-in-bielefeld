@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from scrapers.arthouse import _parse_german_date, scrape_arthouse
+from scrapers.arthouse import _fix_mojibake, _parse_german_date, scrape_arthouse
 
 # ── _parse_german_date ────────────────────────────────────────────────────────
 
@@ -45,6 +45,35 @@ def test_parse_german_date_unknown_falls_back_to_today():
     dt = datetime.fromisoformat(result)
     assert dt.date() == datetime.now().date()
     assert dt.hour == 15
+
+
+# ── _fix_mojibake ─────────────────────────────────────────────────────────────
+# The programme page serves proper UTF-8 for accented letters but raw
+# Windows-1252 bytes for punctuation, which decode to invisible C1 control
+# characters. They break TMDb title lookups, so they must be mapped back.
+
+def test_fix_mojibake_apostrophe():
+    assert _fix_mojibake("L\x92étranger") == "L’étranger"
+
+
+def test_fix_mojibake_en_dash():
+    assert _fix_mojibake("La brigade \x96 Die Küchenbrigade") == (
+        "La brigade – Die Küchenbrigade"
+    )
+
+
+def test_fix_mojibake_leaves_clean_text_untouched():
+    clean = "Bir kar tanesinin ömrü – Die Lebensdauer einer Schneeflocke"
+    assert _fix_mojibake(clean) == clean
+
+
+def test_fix_mojibake_keeps_accented_letters():
+    assert _fix_mojibake("CINÉMA_FRANÇAIS: Ma mère") == "CINÉMA_FRANÇAIS: Ma mère"
+
+
+def test_fix_mojibake_handles_unassigned_c1_codepoints():
+    """0x81/0x8d/0x8f/0x90/0x9d have no Windows-1252 meaning; leave them as-is."""
+    assert _fix_mojibake("a\x81b") == "a\x81b"
 
 
 # ── Fixture-based scraper tests ───────────────────────────────────────────────
@@ -108,6 +137,24 @@ def test_scrape_showtimes_are_iso_datetimes(scraped_films):
                 pytest.fail(
                     f"Invalid ISO datetime '{st['showtime']}' in '{film['title_display']}'"
                 )
+
+
+def test_scrape_titles_have_no_control_characters(scraped_films):
+    """No scraped title may contain C1 control characters (mojibake)."""
+    for film in scraped_films:
+        for key in ("title_display", "title_raw"):
+            bad = [ch for ch in film[key] if 0x80 <= ord(ch) <= 0x9F]
+            assert not bad, (
+                f"Control chars {[hex(ord(c)) for c in bad]} in {key} {film[key]!r}"
+            )
+
+
+def test_scrape_repairs_double_title_separator(scraped_films):
+    """A combined 'Original – Deutsch' title must use a real dash, not \\x96."""
+    titles = {f["title_display"] for f in scraped_films}
+    combined = [t for t in titles if "Die Küchenbrigade" in t]
+    assert combined, f"Expected the French double title in {len(titles)} titles"
+    assert "–" in combined[0]
 
 
 def test_scrape_booking_urls_present(scraped_films):

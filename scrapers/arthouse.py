@@ -23,6 +23,33 @@ HEADERS = {
 }
 
 
+def _build_c1_table() -> dict[int, str]:
+    """Map C1 control codepoints to the Windows-1252 characters they stand for."""
+    table = {}
+    for code in range(0x80, 0xA0):
+        try:
+            table[code] = bytes([code]).decode("cp1252")
+        except UnicodeDecodeError:
+            continue  # 0x81, 0x8d, 0x8f, 0x90, 0x9d are unassigned in cp1252
+    return table
+
+
+_C1_TO_CP1252 = _build_c1_table()
+
+
+def _fix_mojibake(text: str) -> str:
+    """Repair Windows-1252 punctuation that arrived as C1 control characters.
+
+    The programme page serves proper UTF-8 for accented letters but raw
+    Windows-1252 bytes for punctuation, so "L'étranger – Der Fremde" decodes
+    into "L\\x92étranger \\x96 Der Fremde". Those control characters are
+    invisible in the rendered page but end up in titles, where they break TMDb
+    lookups – and a missing TMDb match means the film escapes the language
+    filter in the orchestrator.
+    """
+    return text.translate(_C1_TO_CP1252)
+
+
 def scrape_arthouse() -> list[dict]:
     """Scrape Lichtwerk & Kamera programme. Returns list of film dicts."""
     logger.info("Scraping Arthouse Kinos Bielefeld...")
@@ -30,7 +57,7 @@ def scrape_arthouse() -> list[dict]:
     resp.raise_for_status()
     resp.encoding = "utf-8"
 
-    soup = BeautifulSoup(resp.text, "html.parser")
+    soup = BeautifulSoup(_fix_mojibake(resp.text), "html.parser")
     films = []
 
     # Each film is in a programme-entry block.
@@ -99,7 +126,7 @@ def _fetch_film_detail(url: str) -> dict:
     resp = requests.get(url, headers=HEADERS, timeout=15)
     resp.raise_for_status()
     resp.encoding = "utf-8"
-    text = BeautifulSoup(resp.text, "html.parser").get_text(" ", strip=True)
+    text = BeautifulSoup(_fix_mojibake(resp.text), "html.parser").get_text(" ", strip=True)
 
     result: dict[str, str | int] = {}
 

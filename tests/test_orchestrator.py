@@ -98,6 +98,78 @@ def test_enrich_subtitle_retry():
     assert result is not None
 
 
+# Arthouse joins the original and German title with a dash. TMDb knows each
+# half but not the combination, so the halves must be tried as a fallback –
+# without it, non-EN/FR films get no TMDb match and thus escape the language
+# filter (which only applies when a match exists).
+
+def test_enrich_splits_double_title_and_finds_original():
+    film = _film_data(title="Bir kar tanesinin ömrü – Die Lebensdauer einer Schneeflocke")
+    tmdb = {"original_language": "tr", "tmdb_id": 4242}
+
+    def fake_lookup(title, year=None):
+        return tmdb if title == "Bir kar tanesinin ömrü" else None
+
+    with patch("orchestrator.lookup_film", side_effect=fake_lookup):
+        result = _enrich_with_tmdb(film)
+    assert result is None, "Turkish film should be filtered out once TMDb resolves it"
+
+
+def test_enrich_splits_double_title_german_half():
+    """The German half is tried too, since either half may come first."""
+    film = _film_data(title="Der Astronaut - Project Hail Mary")
+    tmdb = {"original_language": "en", "tmdb_id": 687163}
+
+    def fake_lookup(title, year=None):
+        return tmdb if title == "Project Hail Mary" else None
+
+    with patch("orchestrator.lookup_film", side_effect=fake_lookup):
+        result = _enrich_with_tmdb(film)
+    assert result is not None
+    assert result["_tmdb_data"] == tmdb
+
+
+def test_enrich_splits_double_title_after_prefix_strip():
+    """Prefix and dash split must combine: 'PREFIX: Original – Deutsch'."""
+    film = _film_data(title="CINÉMA_FRANÇAIS: La brigade – Die Küchenbrigade")
+    tmdb = {"original_language": "fr", "tmdb_id": 800}
+
+    def fake_lookup(title, year=None):
+        return tmdb if title == "La brigade" else None
+
+    with patch("orchestrator.lookup_film", side_effect=fake_lookup):
+        result = _enrich_with_tmdb(film)
+    assert result is not None
+
+
+def test_enrich_does_not_split_hyphenated_words():
+    """A dash without surrounding spaces is part of the title, not a separator."""
+    film = _film_data(title="Spider-Man")
+    tried = []
+
+    def fake_lookup(title, year=None):
+        tried.append(title)
+
+    with patch("orchestrator.lookup_film", side_effect=fake_lookup):
+        _enrich_with_tmdb(film)
+    assert tried == ["Spider-Man"]
+
+
+def test_enrich_full_title_still_preferred():
+    """The complete title is tried first; halves are only a fallback."""
+    film = _film_data(title="Vera - Die Erbin")
+    tried = []
+
+    def fake_lookup(title, year=None):
+        tried.append(title)
+        return {"original_language": "en", "tmdb_id": 1} if title == "Vera - Die Erbin" else None
+
+    with patch("orchestrator.lookup_film", side_effect=fake_lookup):
+        result = _enrich_with_tmdb(film)
+    assert tried == ["Vera - Die Erbin"]
+    assert result is not None
+
+
 def test_enrich_year_mismatch_triggers_retry():
     """If TMDb year differs from arthouse year by > 3, retry with the correct year."""
     film = _film_data(title="Nosferatu", _arthouse_year=2024)
