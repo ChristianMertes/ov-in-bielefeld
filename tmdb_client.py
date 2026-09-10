@@ -7,6 +7,7 @@ Set the environment variable TMDB_API_KEY.
 """
 import logging
 import re
+from datetime import UTC, datetime, timedelta
 
 import requests
 
@@ -20,6 +21,23 @@ TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/w500"
 
 # Languages we're interested in for OV screenings
 RELEVANT_LANGUAGES = {"en", "fr"}
+
+# A negative entry suppresses the orchestrator's language filter, which only
+# runs on a TMDb match – so never trust one forever. Films also get added to
+# TMDb after their cinema release, which this re-check picks up.
+NEGATIVE_CACHE_TTL = timedelta(days=7)
+
+
+class TmdbUnavailableError(RuntimeError):
+    """TMDb could not be reached – distinct from 'TMDb knows no such film'."""
+
+
+def _redact(e: Exception) -> str:
+    """Stringify an exception, redacting any API key in URL query params.
+
+    Handles the empty-key case naturally: a missing key simply won't match.
+    """
+    return re.sub(r"(api_key|apikey)=[^&\s]+", r"\1=REDACTED", str(e), flags=re.IGNORECASE)
 
 
 def lookup_film(title: str, year: int | None = None) -> dict | None:
@@ -36,15 +54,21 @@ def lookup_film(title: str, year: int | None = None) -> dict | None:
     cache_key = f"{title}|{year or ''}"
     with get_db() as db:
         cached = get_tmdb_cache(db, cache_key)
-        if cached:
-            if cached["tmdb_id"] is None:
-                return None  # Previously looked up and not found/not relevant
+    if cached:
+        if cached["tmdb_id"] is not None:
             return dict(cached)
+        if not _negative_entry_expired(cached["cached_at"]):
+            return None  # Previously looked up and not found/not relevant
 
     # Clean up title for search
     search_title = _clean_title_for_search(title)
 
-    result = _search_tmdb(search_title, year, api_key)
+    try:
+        result = _search_tmdb(search_title, year, api_key)
+    except TmdbUnavailableError as e:
+        # Caching this would turn a blip into a permanent "not found"
+        logger.warning("TMDb unavailable for '%s', not caching: %s", title, _redact(e))
+        return None
 
     # Cache the result (even if None, to avoid repeated lookups)
     with get_db() as db:
@@ -54,6 +78,18 @@ def lookup_film(title: str, year: int | None = None) -> dict | None:
             set_tmdb_cache(db, cache_key, tmdb_id=None)
 
     return result
+
+
+def _negative_entry_expired(cached_at: str | None) -> bool:
+    """Return True if a negative cache entry is old enough to re-check."""
+    if not cached_at:
+        return True
+    try:
+        stamp = datetime.fromisoformat(cached_at)
+    except (ValueError, TypeError):
+        return True
+    # SQLite's datetime('now') default writes naive UTC
+    return datetime.now(UTC).replace(tzinfo=None) - stamp > NEGATIVE_CACHE_TTL
 
 
 def _clean_title_for_search(title: str) -> str:
@@ -109,8 +145,9 @@ def _tmdb_search_request(title: str, api_key: str, language: str | None = None,
         resp.raise_for_status()
         data = resp.json()
     except requests.RequestException as e:
-        logger.error("TMDb API error: %s", e)
-        return None
+        logger.error("TMDb API error: %s", _redact(e))
+        msg = f"TMDb search failed: {_redact(e)}"
+        raise TmdbUnavailableError(msg) from e
 
     results = data.get("results", [])
     if not results:
@@ -158,7 +195,7 @@ def _get_movie_details(tmdb_id: int, api_key: str, language: str = "de-DE") -> d
         resp.raise_for_status()
         return resp.json()
     except requests.RequestException as e:
-        logger.error("TMDb detail fetch error for ID %s: %s", tmdb_id, e)
+        logger.error("TMDb detail fetch error for ID %s: %s", tmdb_id, _redact(e))
         return None
 
 

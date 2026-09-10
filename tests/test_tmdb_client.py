@@ -1,9 +1,14 @@
 """Tests for the TMDb client."""
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 import settings
 from database import get_db, set_tmdb_cache
 from tmdb_client import (
+    NEGATIVE_CACHE_TTL,
+    TmdbUnavailableError,
     _clean_title_for_search,
     _extract_year,
     _get_movie_details,
@@ -198,11 +203,12 @@ def test_tmdb_search_request_empty_results():
     assert result is None
 
 
-def test_tmdb_search_request_network_error():
+def test_tmdb_search_request_network_error_raises():
+    """A network error must be distinguishable from 'TMDb knows no such film'."""
     import requests as req
-    with patch("tmdb_client.requests.get", side_effect=req.RequestException("timeout")):
-        result = _tmdb_search_request("Inception", "fakekey")
-    assert result is None
+    with patch("tmdb_client.requests.get", side_effect=req.RequestException("timeout")), \
+         pytest.raises(TmdbUnavailableError):
+        _tmdb_search_request("Inception", "fakekey")
 
 
 def test_tmdb_search_request_title_de_cleared_when_same_as_original():
@@ -292,6 +298,77 @@ def test_lookup_film_cache_miss_calls_api_and_caches(db, monkeypatch):
             "SELECT tmdb_id FROM tmdb_cache WHERE title_query = ?", ("Inception|2010",)
         ).fetchone()
     assert cached["tmdb_id"] == 27205
+
+
+def _age_cache_entry(key: str, age: timedelta) -> None:
+    """Backdate a cache entry's timestamp (SQLite stores UTC via datetime('now'))."""
+    stamp = (datetime.now(UTC).replace(tzinfo=None) - age).strftime("%Y-%m-%d %H:%M:%S")
+    with get_db() as conn:
+        conn.execute("UPDATE tmdb_cache SET cached_at = ? WHERE title_query = ?",
+                     (stamp, key))
+
+
+# ── transient failures must not poison the cache ──────────────────────────────
+# A negative entry blocks the orchestrator's language filter (which only runs
+# on a TMDb match), so a brief outage must not make a film permanently
+# unfilterable.
+
+def test_lookup_film_network_error_does_not_cache(db, monkeypatch):
+    import requests as req
+    monkeypatch.setattr(settings, "TMDB_API_KEY", "fakekey")
+
+    with patch("tmdb_client.requests.get", side_effect=req.RequestException("boom")):
+        result = lookup_film("Flaky Film")
+
+    assert result is None
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM tmdb_cache WHERE title_query = ?", ("Flaky Film|",)
+        ).fetchone()
+    assert row is None, "a transient outage must not be cached as 'not found'"
+
+
+def test_lookup_film_retries_after_negative_entry_expires(db, monkeypatch):
+    """An expired negative entry is re-checked instead of trusted forever."""
+    monkeypatch.setattr(settings, "TMDB_API_KEY", "fakekey")
+    with get_db() as conn:
+        set_tmdb_cache(conn, "Late Addition|", tmdb_id=None)
+    _age_cache_entry("Late Addition|", NEGATIVE_CACHE_TTL + timedelta(days=1))
+
+    with (
+        patch("tmdb_client.requests.get", return_value=_mock_resp(_SEARCH_RESULT)),
+        patch("tmdb_client._get_movie_details", return_value=_DETAIL_RESULT),
+    ):
+        result = lookup_film("Late Addition")
+
+    assert result is not None
+    assert result["tmdb_id"] == 27205
+
+
+def test_lookup_film_fresh_negative_entry_still_trusted(db, monkeypatch):
+    monkeypatch.setattr(settings, "TMDB_API_KEY", "fakekey")
+    with get_db() as conn:
+        set_tmdb_cache(conn, "Recent Miss|", tmdb_id=None)
+    _age_cache_entry("Recent Miss|", NEGATIVE_CACHE_TTL - timedelta(days=1))
+
+    with patch("tmdb_client.requests.get") as mock_get:
+        result = lookup_film("Recent Miss")
+    assert result is None
+    mock_get.assert_not_called()
+
+
+def test_lookup_film_positive_entry_not_expired_by_ttl(db, monkeypatch):
+    """The TTL applies to negative entries only; positives stay valid."""
+    monkeypatch.setattr(settings, "TMDB_API_KEY", "fakekey")
+    with get_db() as conn:
+        set_tmdb_cache(conn, "Old Hit|", tmdb_id=27205, original_language="en")
+    _age_cache_entry("Old Hit|", NEGATIVE_CACHE_TTL + timedelta(days=365))
+
+    with patch("tmdb_client.requests.get") as mock_get:
+        result = lookup_film("Old Hit")
+    assert result is not None
+    assert result["tmdb_id"] == 27205
+    mock_get.assert_not_called()
 
 
 def test_lookup_film_api_miss_caches_negative(db, monkeypatch):
