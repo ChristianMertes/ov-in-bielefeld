@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 
 import requests
 from bs4 import BeautifulSoup, Tag
+from ftfy import TextFixerConfig, fix_text
 
 logger = logging.getLogger(__name__)
 
@@ -23,31 +24,24 @@ HEADERS = {
 }
 
 
-def _build_c1_table() -> dict[int, str]:
-    """Map C1 control codepoints to the Windows-1252 characters they stand for."""
-    table = {}
-    for code in range(0x80, 0xA0):
-        try:
-            table[code] = bytes([code]).decode("cp1252")
-        except UnicodeDecodeError:
-            continue  # 0x81, 0x8d, 0x8f, 0x90, 0x9d are unassigned in cp1252
-    return table
-
-
-_C1_TO_CP1252 = _build_c1_table()
+# Keep ftfy's encoding repairs but not its typography edits: curly quotes are
+# correct German typography, and HTML entities must survive until BeautifulSoup
+# unescapes them.
+_FTFY_CONFIG = TextFixerConfig(uncurl_quotes=False, unescape_html=False)
 
 
 def _fix_mojibake(text: str) -> str:
-    """Repair Windows-1252 punctuation that arrived as C1 control characters.
+    """Repair text that was decoded with the wrong codec somewhere upstream.
 
     The programme page serves proper UTF-8 for accented letters but raw
-    Windows-1252 bytes for punctuation, so "L'étranger – Der Fremde" decodes
-    into "L\\x92étranger \\x96 Der Fremde". Those control characters are
-    invisible in the rendered page but end up in titles, where they break TMDb
-    lookups – and a missing TMDb match means the film escapes the language
-    filter in the orchestrator.
+    Windows-1252 bytes for punctuation, so "L'étranger – Der Fremde" arrives as
+    "L\\x92étranger \\x96 Der Fremde". Those control characters are invisible in
+    the rendered page but end up in titles, where they break TMDb lookups – and
+    a missing TMDb match means the film escapes the language filter in the
+    orchestrator. ftfy also covers the other common corruptions ("Ã©", double
+    encoding), so a future encoding change at the source stays harmless.
     """
-    return text.translate(_C1_TO_CP1252)
+    return fix_text(text, config=_FTFY_CONFIG)
 
 
 def scrape_arthouse() -> list[dict]:
@@ -57,7 +51,7 @@ def scrape_arthouse() -> list[dict]:
     resp.raise_for_status()
     resp.encoding = "utf-8"
 
-    soup = BeautifulSoup(_fix_mojibake(resp.text), "html.parser")
+    soup = BeautifulSoup(resp.text, "html.parser")
     films = []
 
     # Each film is in a programme-entry block.
@@ -126,7 +120,7 @@ def _fetch_film_detail(url: str) -> dict:
     resp = requests.get(url, headers=HEADERS, timeout=15)
     resp.raise_for_status()
     resp.encoding = "utf-8"
-    text = BeautifulSoup(_fix_mojibake(resp.text), "html.parser").get_text(" ", strip=True)
+    text = _fix_mojibake(BeautifulSoup(resp.text, "html.parser").get_text(" ", strip=True))
 
     result: dict[str, str | int] = {}
 
@@ -204,6 +198,9 @@ def _parse_film_block(block: Tag) -> dict | None:
 
     if not title:
         return None
+
+    # The page mixes encodings; repair before the title is used anywhere.
+    title = _fix_mojibake(title)
 
     # Clean up title: remove prefixes like "CINÉMA_FRANÇAIS:", "best_of_cinema:", etc.
     title_clean = title

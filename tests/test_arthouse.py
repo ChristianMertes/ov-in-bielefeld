@@ -76,6 +76,29 @@ def test_fix_mojibake_handles_unassigned_c1_codepoints():
     assert _fix_mojibake("a\x81b") == "a\x81b"
 
 
+def test_fix_mojibake_classic_utf8_as_cp1252():
+    """Not just C1: the common 'Ã©' corruption must be repaired too."""
+    assert _fix_mojibake("L'Ã©tranger â€“ Der Fremde") == "L'étranger – Der Fremde"
+
+
+def test_fix_mojibake_double_encoded():
+    assert _fix_mojibake("MÃƒÂ¤dchen") == "Mädchen"
+
+
+def test_fix_mojibake_utf8_as_latin1_turkish():
+    assert _fix_mojibake("Bir kar tanesinin Ã¶mrÃ¼") == "Bir kar tanesinin ömrü"
+
+
+def test_fix_mojibake_keeps_typographic_apostrophe():
+    """Correct typography must survive – no uncurling to ASCII quotes."""
+    assert _fix_mojibake("L’étranger – Der Fremde") == "L’étranger – Der Fremde"
+
+
+def test_fix_mojibake_keeps_html_entities_intact():
+    """Entities must not be unescaped; BeautifulSoup handles that itself."""
+    assert _fix_mojibake("Blood &amp; Sinners") == "Blood &amp; Sinners"
+
+
 # ── Fixture-based scraper tests ───────────────────────────────────────────────
 
 @pytest.fixture(scope="module")
