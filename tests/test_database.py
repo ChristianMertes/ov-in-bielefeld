@@ -5,15 +5,19 @@ from datetime import datetime, timedelta
 import database
 from database import (
     cleanup_old_showtimes,
+    cleanup_old_sneak_candidates,
     get_film_by_id,
     get_film_showtimes,
     get_films_with_imdb_id,
     get_new_unnotified_films,
     get_showtimes_for_films,
+    get_sneak_candidates,
+    get_sneak_showtimes,
     get_tmdb_cache,
     get_upcoming_films,
     init_db,
     mark_film_notified,
+    replace_sneak_candidates,
     set_tmdb_cache,
     update_film_ratings,
     update_film_rt_score,
@@ -806,3 +810,164 @@ def test_repair_broken_showtimes_fk(tmp_path, monkeypatch):
     cleanup_old_showtimes(conn, days_old=7)
     conn.commit()
     conn.close()
+
+
+# ── Sneak previews ────────────────────────────────────────────────────────────
+
+def _candidate(tmdb_id=1, **kwargs):
+    return {
+        "tmdb_id": tmdb_id,
+        "title_de": "Der Kandidat",
+        "title_original": "The Candidate",
+        "original_language": "en",
+        "poster_url": "https://image.tmdb.org/t/p/w500/x.jpg",
+        "overview": "Ein Film.",
+        "release_year": 2026,
+        "runtime_minutes": 100,
+        "imdb_id": "tt0000001",
+        "popularity": 10.0,
+        **kwargs,
+    }
+
+
+def test_upsert_film_stores_sneak_flag(db):
+    film_id, _ = upsert_film(db, "SNEAK PREVIEW", is_sneak=1, original_language="en")
+    assert get_film_by_id(db, film_id)["is_sneak"] == 1
+
+
+def test_upsert_film_defaults_to_not_sneak(db):
+    film_id, _ = upsert_film(db, "Inception", tmdb_id=27205)
+    assert get_film_by_id(db, film_id)["is_sneak"] == 0
+
+
+def test_init_db_flags_existing_sneak_rows(tmp_path, monkeypatch):
+    """A sneak entry written before sneaks were recognised gets repaired.
+
+    "SNEAK PREVIEW" matched a real TMDb film of that name, so the row carried
+    that film's identity. init_db must flag it and strip the wrong metadata.
+    """
+    db_path = str(tmp_path / "sneak.db")
+    monkeypatch.setattr(database, "DB_PATH", db_path)
+    init_db()
+
+    conn = database.get_connection()
+    conn.execute(
+        "INSERT INTO films (title_display, tmdb_id, imdb_id, title_original, title_de,"
+        " poster_url, overview, release_year, runtime_minutes, imdb_rating, rt_score,"
+        " tmdb_popularity) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        ("SNEAK PREVIEW - English Edition", 1220030, "tt99", "All In: Sneak Preview",
+         "All In", "https://example.com/wrong.jpg", "Falscher Text", 2023, 90, 6.5, 70, 3.2),
+    )
+    conn.commit()
+    conn.close()
+
+    init_db()
+
+    conn = database.get_connection()
+    row = conn.execute("SELECT * FROM films").fetchone()
+    assert row["is_sneak"] == 1
+    for column in ("tmdb_id", "imdb_id", "title_original", "title_de", "poster_url",
+                   "overview", "release_year", "runtime_minutes", "imdb_rating",
+                   "rt_score", "tmdb_popularity"):
+        assert row[column] is None, f"{column} should have been cleared"
+    assert row["title_display"] == "SNEAK PREVIEW - English Edition"
+    conn.close()
+
+
+def test_init_db_leaves_regular_films_alone(tmp_path, monkeypatch):
+    db_path = str(tmp_path / "regular.db")
+    monkeypatch.setattr(database, "DB_PATH", db_path)
+    init_db()
+
+    conn = database.get_connection()
+    conn.execute(
+        "INSERT INTO films (title_display, tmdb_id, poster_url) VALUES (?, ?, ?)",
+        ("Sneakers", 9563, "https://example.com/sneakers.jpg"),
+    )
+    conn.commit()
+    conn.close()
+
+    init_db()
+
+    conn = database.get_connection()
+    row = conn.execute("SELECT * FROM films").fetchone()
+    assert row["is_sneak"] == 0
+    assert row["tmdb_id"] == 9563
+    assert row["poster_url"] == "https://example.com/sneakers.jpg"
+    conn.close()
+
+
+def test_get_sneak_showtimes_returns_only_sneaks(db):
+    sneak_id, _ = upsert_film(db, "SNEAK PREVIEW", is_sneak=1)
+    regular_id, _ = upsert_film(db, "Inception", tmdb_id=27205)
+    upsert_showtime(db, sneak_id, "kamera", _future(1), "OmU", "https://example.com/s")
+    upsert_showtime(db, regular_id, "lichtwerk", _future(1), "OV", None)
+
+    rows = get_sneak_showtimes(db)
+    assert len(rows) == 1
+    assert rows[0]["film_id"] == sneak_id
+    assert rows[0]["cinema"] == "kamera"
+    assert rows[0]["booking_url"] == "https://example.com/s"
+
+
+def test_get_sneak_showtimes_excludes_past(db):
+    sneak_id, _ = upsert_film(db, "Sneak OV", is_sneak=1)
+    upsert_showtime(db, sneak_id, "cinemaxx", _past(1), "OV", None)
+    assert get_sneak_showtimes(db) == []
+
+
+def test_get_sneak_showtimes_carries_film_language(db):
+    sneak_id, _ = upsert_film(db, "Sneak OV", is_sneak=1, original_language="en")
+    upsert_showtime(db, sneak_id, "cinemaxx", _future(1), "OV", None)
+    assert get_sneak_showtimes(db)[0]["original_language"] == "en"
+
+
+def test_sneak_candidates_round_trip(db):
+    replace_sneak_candidates(db, "2026-09-17", [_candidate(1), _candidate(2)])
+    by_date = get_sneak_candidates(db, ["2026-09-17"])
+    assert len(by_date["2026-09-17"]) == 2
+    assert by_date["2026-09-17"][0]["title_original"] == "The Candidate"
+
+
+def test_sneak_candidates_sorted_by_popularity(db):
+    replace_sneak_candidates(db, "2026-09-17", [
+        _candidate(1, popularity=5.0),
+        _candidate(2, popularity=50.0),
+    ])
+    ids = [c["tmdb_id"] for c in get_sneak_candidates(db, ["2026-09-17"])["2026-09-17"]]
+    assert ids == [2, 1]
+
+
+def test_replace_sneak_candidates_drops_stale_entries(db):
+    replace_sneak_candidates(db, "2026-09-17", [_candidate(1), _candidate(2)])
+    replace_sneak_candidates(db, "2026-09-17", [_candidate(2)])
+    ids = [c["tmdb_id"] for c in get_sneak_candidates(db, ["2026-09-17"])["2026-09-17"]]
+    assert ids == [2]
+
+
+def test_replace_sneak_candidates_keeps_other_dates(db):
+    replace_sneak_candidates(db, "2026-09-17", [_candidate(1)])
+    replace_sneak_candidates(db, "2026-09-24", [_candidate(2)])
+    by_date = get_sneak_candidates(db, ["2026-09-17", "2026-09-24"])
+    assert [c["tmdb_id"] for c in by_date["2026-09-17"]] == [1]
+    assert [c["tmdb_id"] for c in by_date["2026-09-24"]] == [2]
+
+
+def test_get_sneak_candidates_unknown_date_gives_empty_list(db):
+    assert get_sneak_candidates(db, ["2026-09-17"]) == {"2026-09-17": []}
+
+
+def test_get_sneak_candidates_no_dates(db):
+    assert get_sneak_candidates(db, []) == {}
+
+
+def test_cleanup_old_sneak_candidates(db):
+    old = (datetime.now() - timedelta(days=30)).date().isoformat()
+    recent = (datetime.now() + timedelta(days=3)).date().isoformat()
+    replace_sneak_candidates(db, old, [_candidate(1)])
+    replace_sneak_candidates(db, recent, [_candidate(2)])
+
+    cleanup_old_sneak_candidates(db)
+
+    remaining = db.execute("SELECT DISTINCT release_date FROM sneak_candidates").fetchall()
+    assert [r["release_date"] for r in remaining] == [recent]

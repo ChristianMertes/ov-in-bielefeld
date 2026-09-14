@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta
 
 import settings
+from sneak import is_sneak_title
 from timeutil import now_local
 
 DB_PATH = settings.DB_PATH
@@ -53,7 +54,8 @@ def init_db() -> None:
                 imdb_rating REAL,
                 imdb_votes INTEGER,
                 rt_score INTEGER,
-                tmdb_popularity REAL
+                tmdb_popularity REAL,
+                is_sneak INTEGER NOT NULL DEFAULT 0
             );
 
             CREATE TABLE IF NOT EXISTS showtimes (
@@ -80,6 +82,25 @@ def init_db() -> None:
                 runtime_minutes INTEGER,
                 tmdb_popularity REAL,
                 cached_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+
+            -- Films that could be running at an upcoming sneak preview: the
+            -- line-up of the release Thursday the sneak points at. Refreshed
+            -- wholesale per release_date by each scrape.
+            CREATE TABLE IF NOT EXISTS sneak_candidates (
+                release_date TEXT NOT NULL,  -- ISO date of the German release
+                tmdb_id INTEGER NOT NULL,
+                title_de TEXT,
+                title_original TEXT,
+                original_language TEXT,
+                poster_url TEXT,
+                overview TEXT,
+                release_year INTEGER,
+                runtime_minutes INTEGER,
+                imdb_id TEXT,
+                popularity REAL,
+                fetched_at TEXT NOT NULL DEFAULT (datetime('now')),
+                PRIMARY KEY (release_date, tmdb_id)
             );
 
             CREATE INDEX IF NOT EXISTS idx_showtimes_film ON showtimes(film_id);
@@ -161,6 +182,7 @@ def init_db() -> None:
             "ALTER TABLE films ADD COLUMN rt_score INTEGER",
             "ALTER TABLE films ADD COLUMN tmdb_popularity REAL",
             "ALTER TABLE tmdb_cache ADD COLUMN tmdb_popularity REAL",
+            "ALTER TABLE films ADD COLUMN is_sneak INTEGER NOT NULL DEFAULT 0",
             # Canonical identity: TMDb ID (most reliable)
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_films_tmdb_id"
             " ON films(tmdb_id) WHERE tmdb_id IS NOT NULL",
@@ -172,6 +194,35 @@ def init_db() -> None:
                 db.execute(stmt)
             except sqlite3.OperationalError:
                 pass
+
+        _flag_sneak_films(db)
+
+
+# Metadata a sneak entry must not carry: its title is a placeholder, so anything
+# TMDb returned for it belongs to some other film.
+_SNEAK_CLEARED_COLUMNS = (
+    "tmdb_id", "imdb_id", "title_original", "title_de", "poster_url", "overview",
+    "release_year", "runtime_minutes", "imdb_rating", "imdb_votes", "rt_score",
+    "tmdb_popularity",
+)
+
+
+def _flag_sneak_films(db: sqlite3.Connection) -> None:
+    """Flag sneak entries written before sneaks were recognised, and clean them.
+
+    Those rows went to TMDb like any other film, and "SNEAK PREVIEW" matched a
+    real film of that name – the entry then showed that film's poster, plot and
+    ratings. Flagged rows are skipped on later runs, so this settles after one
+    pass per row.
+    """
+    rows = db.execute("SELECT id, title_display FROM films WHERE is_sneak = 0").fetchall()
+    assignments = ", ".join(f"{col} = NULL" for col in _SNEAK_CLEARED_COLUMNS)
+    for row in rows:
+        if is_sneak_title(row["title_display"]):
+            db.execute(
+                f"UPDATE films SET is_sneak = 1, {assignments} WHERE id = ?",  # noqa: S608
+                (row["id"],),
+            )
 
 
 def upsert_film(db: sqlite3.Connection, title_display: str, **kwargs) -> tuple[int, bool]:  # noqa: ANN003
@@ -222,7 +273,8 @@ def upsert_film(db: sqlite3.Connection, title_display: str, **kwargs) -> tuple[i
             updates.append("title_display = ?")
             values.append(title_display)
         for key in ("title_original", "title_de", "original_language", "tmdb_id", "imdb_id",
-                    "poster_url", "overview", "release_year", "runtime_minutes", "tmdb_popularity"):
+                    "poster_url", "overview", "release_year", "runtime_minutes", "tmdb_popularity",
+                    "is_sneak"):
             if key in kwargs and kwargs[key] is not None:
                 updates.append(f"{key} = ?")
                 values.append(kwargs[key])
@@ -236,7 +288,8 @@ def upsert_film(db: sqlite3.Connection, title_display: str, **kwargs) -> tuple[i
     cols = ["title_display"]
     vals = [title_display]
     for key in ("title_original", "title_de", "original_language", "tmdb_id", "imdb_id",
-                "poster_url", "overview", "release_year", "runtime_minutes", "tmdb_popularity"):
+                "poster_url", "overview", "release_year", "runtime_minutes", "tmdb_popularity",
+                "is_sneak"):
         if key in kwargs and kwargs[key] is not None:
             cols.append(key)
             vals.append(kwargs[key])
@@ -314,6 +367,65 @@ def get_showtimes_for_films(db: sqlite3.Connection, film_ids: list[int]) -> dict
     for row in rows:
         result[row["film_id"]].append(dict(row))
     return result
+
+
+def get_sneak_showtimes(db: sqlite3.Connection) -> list:
+    """Get all future showtimes of sneak entries, with their film's language."""
+    now = now_local().isoformat()
+    return db.execute("""
+        SELECT s.*, f.title_display, f.original_language
+        FROM showtimes s
+        JOIN films f ON f.id = s.film_id
+        WHERE f.is_sneak = 1 AND s.showtime >= ?
+        ORDER BY s.showtime
+    """, (now,)).fetchall()
+
+
+_SNEAK_CANDIDATE_COLUMNS = (
+    "tmdb_id", "title_de", "title_original", "original_language", "poster_url",
+    "overview", "release_year", "runtime_minutes", "imdb_id", "popularity",
+)
+
+
+def replace_sneak_candidates(db: sqlite3.Connection, release_date: str,
+                             candidates: list[dict]) -> None:
+    """Replace the candidate line-up for one release date.
+
+    Wholesale replacement, because a film dropping off TMDb's release list for
+    that date means it is no longer a candidate.
+    """
+    db.execute("DELETE FROM sneak_candidates WHERE release_date = ?", (release_date,))
+    cols = ", ".join(("release_date", *_SNEAK_CANDIDATE_COLUMNS))
+    placeholders = ", ".join(["?"] * (len(_SNEAK_CANDIDATE_COLUMNS) + 1))
+    db.executemany(
+        f"INSERT INTO sneak_candidates ({cols}) VALUES ({placeholders})",  # noqa: S608
+        [
+            [release_date, *(c.get(col) for col in _SNEAK_CANDIDATE_COLUMNS)]
+            for c in candidates
+        ],
+    )
+
+
+def get_sneak_candidates(db: sqlite3.Connection, release_dates: list[str]) -> dict[str, list[dict]]:
+    """Return candidates for the given release dates, most popular first."""
+    if not release_dates:
+        return {}
+    placeholders = ",".join("?" * len(release_dates))
+    rows = db.execute(
+        f"SELECT * FROM sneak_candidates WHERE release_date IN ({placeholders})"  # noqa: S608
+        " ORDER BY popularity DESC",
+        release_dates,
+    ).fetchall()
+    result: dict[str, list[dict]] = {d: [] for d in release_dates}
+    for row in rows:
+        result[row["release_date"]].append(dict(row))
+    return result
+
+
+def cleanup_old_sneak_candidates(db: sqlite3.Connection, days_old: int = 7) -> None:
+    """Remove candidate line-ups for release dates more than N days past."""
+    cutoff = (now_local().date() - timedelta(days=days_old)).isoformat()
+    db.execute("DELETE FROM sneak_candidates WHERE release_date < ?", (cutoff,))
 
 
 def get_film_by_id(db: sqlite3.Connection, film_id: int) -> sqlite3.Row | None:

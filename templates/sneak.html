@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+
+{% block title %}Sneak Previews – Kino OV Bielefeld{% endblock %}
+
+{% block meta_extra %}
+<meta property="og:title" content="Sneak Previews in Bielefeld">
+<meta property="og:description" content="Welche Filme bei den kommenden Sneak Previews laufen könnten – alle englischsprachigen Kinostarts des folgenden Donnerstags.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="{{ sneak_poster }}">
+{% endblock %}
+
+{% block content %}
+<a href="/" class="back-link">← Zurück zur Übersicht</a>
+
+<article>
+<div class="sneak-intro">
+    <div class="sneak-intro-poster">
+        <img src="{{ sneak_poster }}" alt="Sneak Preview">
+    </div>
+    <div>
+        <h1>Sneak Previews</h1>
+        <p>
+            Bei einer Sneak Preview verrät das Kino erst im Saal, welcher Film läuft.
+            Gezeigt wird fast immer ein Film, der am Donnerstag darauf offiziell in den
+            deutschen Kinos startet – Sneaks laufen deshalb am Mittwochabend.
+        </p>
+        <p>
+            Filmdetails gibt es hier also keine. Stattdessen steht unten, welche Filme
+            in Frage kommen: alle Starts des jeweiligen Donnerstags in der passenden
+            Originalsprache, nach Popularität sortiert. Garantiert ist das nicht – manche
+            Sneak zeigt einen Film, der schon länger läuft oder erst später anläuft.
+        </p>
+    </div>
+</div>
+
+{% if groups %}
+{% for group in groups %}
+<section class="sneak-group">
+    <h2 class="detail-section-heading">Sneak vor dem Kinostart am {{ group.release_date | date_de }}</h2>
+
+    <div class="showtimes-section">
+        {% for cinema_key, cinema_showtimes in group.showtimes | sort(attribute="cinema") | groupby("cinema") %}
+        <div class="cinema-group">
+            <span class="cinema-label {{ cinema_key }}">{{ cinema_names.get(cinema_key, cinema_key) }}</span>
+            <div class="chips">
+                {% for st in cinema_showtimes | sort(attribute="showtime") %}
+                {% if st.booking_url %}
+                <a href="{{ st.booking_url }}"
+                   class="showtime-chip"
+                   {% if st.relative_label %}data-tooltip="{{ st.relative_label }}"{% endif %}
+                   target="_blank" rel="noopener"
+                   aria-label="Sneak Preview am {{ st.showtime | date_de }} {{ st.showtime | time_hm }} – {{ cinema_names.get(cinema_key, cinema_key) }}">
+                    <span class="date">{{ st.showtime | date_de }}</span>
+                    <span class="time">{{ st.showtime | time_hm }}</span>
+                    {% if st.language_tag %}
+                    <span class="tag tag-{{ st.language_tag | lower }}">{{ st.language_tag }}</span>
+                    {% endif %}
+                </a>
+                {% else %}
+                <span class="showtime-chip showtime-chip--static"
+                   {% if st.relative_label %}data-tooltip="{{ st.relative_label }}"{% endif %}>
+                    <span class="date">{{ st.showtime | date_de }}</span>
+                    <span class="time">{{ st.showtime | time_hm }}</span>
+                    {% if st.language_tag %}
+                    <span class="tag tag-{{ st.language_tag | lower }}">{{ st.language_tag }}</span>
+                    {% endif %}
+                </span>
+                {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <h3 class="sneak-candidates-heading">
+        {% if group.candidates %}
+        {{ group.candidates | length }} mögliche{% if group.candidates | length == 1 %}r{% endif %} Film{% if group.candidates | length != 1 %}e{% endif %}
+        <span class="sneak-candidates-note">
+            Kinostart {{ group.release_date | date_de }}, Originalsprache {{ language_names.get(group.language, group.language) }}
+        </span>
+        {% else %}
+        Kandidaten
+        {% endif %}
+    </h3>
+
+    {% if group.candidates %}
+    <div class="film-list" role="list">
+        {% for c in group.candidates %}
+        <article class="film-card" role="listitem">
+            <div class="film-poster">
+                {% if c.poster_url %}
+                <img src="{{ c.poster_url }}" alt="{{ c.title_original }}" loading="lazy">
+                {% else %}
+                <div class="no-poster" aria-hidden="true">🎬</div>
+                {% endif %}
+            </div>
+            <div class="candidate-info">
+                <h2>{{ c.title_original or c.title_de }}</h2>
+                {% if c.title_de and c.title_de != c.title_original %}
+                <div class="film-title-de">{{ c.title_de }}</div>
+                {% endif %}
+                <div class="film-meta">
+                    {% if c.release_year %}{{ c.release_year }}<span class="separator">·</span>{% endif %}
+                    {% if c.runtime_minutes %}{{ c.runtime_minutes }} min<span class="separator">·</span>{% endif %}
+                    {% if c.original_language %}<img src="/images/{{ c.original_language }}.svg" alt="{{ c.original_language | upper }}" class="lang-flag" title="{{ c.original_language | upper }}" onerror="this.style.display='none'">{% endif %}
+                    <span class="film-links">
+                        {% if c.imdb_id %}
+                        <a href="{{ c.imdb_id | imdb_url }}" target="_blank" rel="noopener" aria-label="IMDb-Seite für {{ c.title_original }}">IMDb</a>
+                        {% endif %}
+                        {% if c.tmdb_id %}
+                        <a href="{{ c.tmdb_id | tmdb_url }}" target="_blank" rel="noopener" aria-label="TMDb-Seite für {{ c.title_original }}">TMDb</a>
+                        {% endif %}
+                    </span>
+                </div>
+                {% if c.overview %}
+                <p class="candidate-overview">{{ c.overview | truncate(260) }}</p>
+                {% endif %}
+            </div>
+        </article>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="no-showtimes">Für diesen Donnerstag sind noch keine passenden Kinostarts bekannt.</p>
+    {% endif %}
+</section>
+{% endfor %}
+{% else %}
+<div class="empty-state">
+    <p>Zurzeit ist keine Sneak Preview im Programm.</p>
+    <p style="font-size: 0.88rem;">Sneaks laufen meist mittwochs – schau später noch mal vorbei.</p>
+</div>
+{% endif %}
+</article>
+{% endblock %}

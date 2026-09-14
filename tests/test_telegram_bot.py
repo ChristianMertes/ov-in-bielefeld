@@ -387,3 +387,30 @@ def test_process_update_private_chat_ignored_when_group_configured(monkeypatch):
     with patch("telegram_bot.send_message") as mock_send:
         _process_update(update)
     mock_send.assert_not_called()
+
+
+# ── sneak previews ────────────────────────────────────────────────────────────
+
+def test_notify_sneak_uses_sneak_heading(db, monkeypatch):
+    film_id, _ = upsert_film(db, "SNEAK PREVIEW", is_sneak=1, original_language="en")
+    upsert_showtime(db, film_id, "kamera", _future(1), "OmU", None)
+    db.commit()
+
+    sent = []
+    monkeypatch.setattr(telegram_bot, "send_message", lambda text, **kw: sent.append(text) or True)
+    telegram_bot.notify_new_film(film_id)
+
+    assert "Sneak Preview" in sent[0]
+
+
+def test_notify_sneak_links_to_sneak_page(db, monkeypatch):
+    film_id, _ = upsert_film(db, "SNEAK PREVIEW", is_sneak=1)
+    upsert_showtime(db, film_id, "kamera", _future(1), "OmU", None)
+    db.commit()
+
+    sent = []
+    monkeypatch.setattr(telegram_bot, "send_message", lambda text, **kw: sent.append(text) or True)
+    telegram_bot.notify_new_film(film_id)
+
+    assert "/sneak" in sent[0]
+    assert f"/film/{film_id}" not in sent[0]

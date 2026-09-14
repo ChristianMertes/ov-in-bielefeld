@@ -31,18 +31,21 @@
     {% for film in films %}
     <article class="film-card" role="listitem"{% if film.next_showtime_label %} data-tooltip="nächste Vorstellung: {{ film.next_showtime_label }}" title="nächste Vorstellung: {{ film.next_showtime_label }}" aria-label="{{ film.title_display }} – nächste Vorstellung: {{ film.next_showtime_label }}"{% endif %}>
         <div class="film-poster">
-            {% if film.poster_url %}
+            {% if film.is_sneak %}
+            <img src="{{ sneak_poster }}" alt="Sneak Preview" loading="lazy">
+            {% elif film.poster_url %}
             <img src="{{ film.poster_url }}" alt="{{ film.title_display }}" loading="lazy">
             {% else %}
             <div class="no-poster" aria-hidden="true">🎬</div>
             {% endif %}
         </div>
         <div class="film-info">
-            <h2><a href="/film/{{ film.id }}">{{ film.title_original or film.title_display }}</a></h2>
+            <h2><a href="{% if film.is_sneak %}/sneak{% else %}/film/{{ film.id }}{% endif %}">{{ film.title_original or film.title_display }}</a></h2>
             {% if film.title_de and film.title_de != film.title_original %}
             <div class="film-title-de">{{ film.title_de }}</div>
             {% endif %}
             <div class="film-meta">
+                {% if film.is_sneak %}<span class="sneak-badge">Film wird erst im Kino verraten</span><span class="separator">·</span>{% endif %}
                 {% if film.release_year %}{{ film.release_year }}<span class="separator">·</span>{% endif %}
                 {% if film.runtime_minutes %}{{ film.runtime_minutes }} min<span class="separator">·</span>{% endif %}
                 {% if film.original_language %}<img src="/images/{{ film.original_language }}.svg" alt="{{ film.original_language | upper }}" class="lang-flag" title="{{ film.original_language | upper }}" onerror="this.style.display='none'">{% endif %}

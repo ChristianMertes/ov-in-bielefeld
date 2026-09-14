@@ -20,6 +20,7 @@ Deployed to https://ov-in-bielefeld.de/.
 - Arthouse detail pages fetched for better year disambiguation on TMDb
 - Telegram bot: notification for new films + `/programm` command
 - Web UI with cinema filter and sorting by date, title, rating, or popularity
+- Sneak preview page (`/sneak`): sneaks are never looked up on TMDb (their titles are placeholders); instead the page lists every film opening in German cinemas on the release Thursday the sneak points at
 - In-process Brotli page cache, invalidated after each scrape and at midnight (date-relative labels)
 - Daily-rotating log files, old logs compressed with xz
 
@@ -119,7 +120,8 @@ ov-in-bielefeld/
 ├── orchestrator.py     # Scraper runner + TMDb enrichment + DB writes
 ├── scheduler.py        # APScheduler (midnight cache flush, 06:00 daily, Wednesdays more often)
 ├── telegram_bot.py     # Telegram notifications + /programm command
-├── database.py         # SQLite layer (films, showtimes, tmdb_cache)
+├── database.py         # SQLite layer (films, showtimes, tmdb_cache, sneak_candidates)
+├── sneak.py            # Sneak preview detection + screening → release-Thursday mapping
 ├── tmdb_client.py      # TMDb API client + IMDb/OMDb URL helpers
 ├── ratings_client.py   # IMDb rating + Rotten Tomatoes score fetching
 ├── cache.py            # In-process Brotli page cache with sentinel-file invalidation

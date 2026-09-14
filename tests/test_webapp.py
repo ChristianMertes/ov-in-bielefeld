@@ -439,3 +439,118 @@ def test_api_hides_showtime_that_started_when_server_runs_in_utc(
     urls = [st["booking_url"] for f in data for st in f["showtimes"]]
     assert "https://example.com/upcoming" in urls
     assert "https://example.com/started" not in urls
+
+
+# ── sneak previews ────────────────────────────────────────────────────────────
+
+def _next_wednesday():
+    today = datetime.now().date()
+    return today + timedelta(days=((2 - today.weekday()) % 7) or 7)
+
+
+@pytest.fixture
+def client_with_sneak(tmp_path, monkeypatch):
+    """TestClient with a sneak entry on the coming Wednesday and its candidates."""
+    db_path = str(tmp_path / "test.db")
+    monkeypatch.setattr(database, "DB_PATH", db_path)
+    monkeypatch.setattr(settings, "DB_PATH", db_path)
+    import cache as _cache
+    with _cache._lock:
+        _cache._store.clear()
+        _cache._store_plain.clear()
+        _cache._version = -1.0
+    with TestClient(app) as c:
+        from database import get_db, replace_sneak_candidates
+        wednesday = _next_wednesday()
+        thursday = (wednesday + timedelta(days=1)).isoformat()
+        with get_db() as conn:
+            film_id, _ = upsert_film(
+                conn, "SNEAK PREVIEW - English Edition", is_sneak=1, original_language="en",
+            )
+            upsert_showtime(conn, film_id, "kamera", f"{wednesday.isoformat()}T20:00:00",
+                            "OmU", "https://example.com/sneak")
+            replace_sneak_candidates(conn, thursday, [{
+                "tmdb_id": 1204680,
+                "title_original": "Coyote vs. Acme",
+                "title_de": "Coyote vs. ACME",
+                "original_language": "en",
+                "poster_url": "https://image.tmdb.org/t/p/w500/coyote.jpg",
+                "overview": "Wile E. Coyote verklagt ACME.",
+                "release_year": 2026,
+                "runtime_minutes": 101,
+                "imdb_id": "tt1756855",
+                "popularity": 593.0,
+            }])
+        yield c, film_id
+
+
+def test_sneak_page_without_sneaks(client):
+    resp = client.get("/sneak")
+    assert resp.status_code == 200
+    assert "keine Sneak Preview im Programm" in resp.text
+
+
+def test_sneak_page_lists_screening(client_with_sneak):
+    client, _ = client_with_sneak
+    resp = client.get("/sneak")
+    assert resp.status_code == 200
+    assert "https://example.com/sneak" in resp.text
+    assert "Kamera" in resp.text
+
+
+def test_sneak_page_lists_candidates(client_with_sneak):
+    client, _ = client_with_sneak
+    resp = client.get("/sneak")
+    assert "Coyote vs. Acme" in resp.text
+    assert "Wile E. Coyote verklagt ACME." in resp.text
+
+
+def test_sneak_page_heads_group_with_release_thursday(client_with_sneak):
+    client, _ = client_with_sneak
+    thursday = _next_wednesday() + timedelta(days=1)
+    resp = client.get("/sneak")
+    assert f"Do, {thursday.day:02d}.{thursday.month:02d}." in resp.text
+
+
+def test_sneak_page_vary_header(client_with_sneak):
+    client, _ = client_with_sneak
+    resp = client.get("/sneak")
+    assert resp.headers["Vary"] == "Accept-Encoding"
+
+
+def test_sneak_page_brotli(client_with_sneak):
+    client, _ = client_with_sneak
+    resp = client.get("/sneak", headers={"Accept-Encoding": "br"})
+    assert resp.status_code == 200
+    assert "Coyote vs. Acme" in resp.text
+
+
+def test_sneak_film_detail_redirects_to_sneak_page(client_with_sneak):
+    client, film_id = client_with_sneak
+    resp = client.get(f"/film/{film_id}", follow_redirects=False)
+    assert resp.status_code == 302
+    assert resp.headers["location"] == "/sneak"
+
+
+def test_index_links_sneak_card_to_sneak_page(client_with_sneak):
+    client, film_id = client_with_sneak
+    resp = client.get("/")
+    assert 'href="/sneak"' in resp.text
+    assert f'href="/film/{film_id}"' not in resp.text
+
+
+def test_index_uses_generic_sneak_poster(client_with_sneak):
+    client, _ = client_with_sneak
+    resp = client.get("/")
+    assert "/static/sneak-preview-poster.webp" in resp.text
+
+
+def test_sitemap_lists_sneak_page(client):
+    resp = client.get("/sitemap.xml")
+    assert "/sneak</loc>" in resp.text
+
+
+def test_sitemap_omits_sneak_film_detail(client_with_sneak):
+    client, film_id = client_with_sneak
+    resp = client.get("/sitemap.xml")
+    assert f"/film/{film_id}<" not in resp.text

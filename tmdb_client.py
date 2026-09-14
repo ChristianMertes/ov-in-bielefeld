@@ -199,6 +199,81 @@ def _get_movie_details(tmdb_id: int, api_key: str, language: str = "de-DE") -> d
         return None
 
 
+# Theatrical release types in TMDb's release-date data: 2 = limited, 3 = wide.
+# Both count as a cinema start, and distributors tag German starts either way.
+_THEATRICAL_RELEASE_TYPES = "2|3"
+
+# Bounds the per-candidate detail lookups below. A German release Thursday
+# carries a handful of films per language; anything past that is noise.
+MAX_RELEASE_CANDIDATES = 12
+
+
+def discover_releases(release_date: str, original_language: str = "en") -> list[dict] | None:
+    """Return films opening in German cinemas on a given date, most popular first.
+
+    Used to work out which films an upcoming sneak preview could be showing.
+    Returns None if TMDb could not be reached – distinct from an empty list,
+    which means TMDb knows of no release on that date.
+    """
+    api_key = settings.TMDB_API_KEY
+    if not api_key:
+        logger.warning("TMDB_API_KEY not set. Skipping release discovery.")
+        return None
+
+    params = {
+        "api_key": api_key,
+        "region": "DE",
+        "language": "de-DE",
+        "sort_by": "popularity.desc",
+        "with_release_type": _THEATRICAL_RELEASE_TYPES,
+        "with_original_language": original_language,
+        "release_date.gte": release_date,
+        "release_date.lte": release_date,
+    }
+
+    try:
+        resp = requests.get(f"{TMDB_BASE_URL}/discover/movie", params=params, timeout=10)
+        resp.raise_for_status()
+        results = resp.json().get("results", [])
+    except requests.RequestException as e:
+        logger.error("TMDb discover failed for %s: %s", release_date, _redact(e))
+        return None
+
+    return [
+        _release_candidate(movie, api_key)
+        for movie in results[:MAX_RELEASE_CANDIDATES]
+    ]
+
+
+def _release_candidate(movie: dict, api_key: str) -> dict:
+    """Build a candidate record from a discover result, enriched with details.
+
+    The discover response dates a film by the release we queried for, so the
+    film's own release year – which is what tells a new film apart from a
+    re-release sharing that date – has to come from the detail endpoint.
+    """
+    details = _get_movie_details(movie["id"], api_key, language="de-DE") or {}
+
+    title_de = details.get("title") or movie.get("title")
+    if title_de == movie.get("original_title"):
+        title_de = None
+
+    poster_path = movie.get("poster_path")
+
+    return {
+        "tmdb_id": movie["id"],
+        "imdb_id": details.get("imdb_id"),
+        "title_original": movie.get("original_title"),
+        "title_de": title_de,
+        "original_language": movie.get("original_language", ""),
+        "poster_url": f"{TMDB_IMAGE_BASE}{poster_path}" if poster_path else None,
+        "overview": details.get("overview") or movie.get("overview", ""),
+        "release_year": _extract_year(details.get("release_date") or movie.get("release_date")),
+        "runtime_minutes": details.get("runtime"),
+        "popularity": movie.get("popularity"),
+    }
+
+
 def is_relevant_language(language_code: str) -> bool:
     """Check if a language code is one we care about (en, fr)."""
     return language_code in RELEVANT_LANGUAGES

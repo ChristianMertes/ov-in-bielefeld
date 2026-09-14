@@ -7,7 +7,7 @@ import pytest
 import database
 import settings
 from database import get_film_by_id
-from orchestrator import _enrich_with_tmdb, _write_film, run_scrape
+from orchestrator import _enrich_with_tmdb, _refresh_sneak_candidates, _write_film, run_scrape
 
 
 def _future(days=1):
@@ -365,3 +365,122 @@ def test_run_scrape_invalidates_cache(patched_run):
     ):
         run_scrape()
     mock_invalidate.assert_called_once()
+
+
+# ── Sneak previews ────────────────────────────────────────────────────────────
+
+def test_sneak_title_never_reaches_tmdb():
+    """The entry that showed a real film called 'All In: Sneak Preview'."""
+    with patch("orchestrator.lookup_film") as mock_lookup:
+        result = _enrich_with_tmdb(_film_data("SNEAK PREVIEW - English Edition"))
+    mock_lookup.assert_not_called()
+    assert result is not None
+    assert result["_is_sneak"] is True
+    assert result["_tmdb_data"] is None
+
+
+def test_regular_title_still_reaches_tmdb():
+    with patch("orchestrator.lookup_film", return_value=None) as mock_lookup:
+        result = _enrich_with_tmdb(_film_data("Sneakers"))
+    mock_lookup.assert_called()
+    assert "_is_sneak" not in result
+
+
+def test_write_sneak_film_sets_flag(db):
+    _write_film(db, {**_film_data("SNEAK PREVIEW"), "_is_sneak": True})
+    film = db.execute("SELECT * FROM films").fetchone()
+    assert film["is_sneak"] == 1
+
+
+def test_write_sneak_film_drops_scraper_metadata(db):
+    """Year, runtime and poster belong to the placeholder, not to the film shown."""
+    _write_film(db, {
+        **_film_data("SNEAK PREVIEW"),
+        "_is_sneak": True,
+        "release_year": 2024,
+        "duration_minutes": 120,
+        "_poster_url": "https://example.com/placeholder.jpg",
+        "_original_title": "Sneak Preview",
+    })
+    film = db.execute("SELECT * FROM films").fetchone()
+    assert film["release_year"] is None
+    assert film["runtime_minutes"] is None
+    assert film["poster_url"] is None
+    assert film["title_original"] is None
+
+
+def test_write_sneak_film_language_from_title(db):
+    _write_film(db, {**_film_data("SNEAK PREVIEW - English Edition"), "_is_sneak": True})
+    assert db.execute("SELECT * FROM films").fetchone()["original_language"] == "en"
+
+
+def test_write_sneak_film_language_from_scraper_attribute(db):
+    _write_film(db, {
+        **_film_data("Sneak Preview"), "_is_sneak": True, "_detected_language": "fr",
+    })
+    assert db.execute("SELECT * FROM films").fetchone()["original_language"] == "fr"
+
+
+def test_write_sneak_film_language_defaults_to_english(db):
+    _write_film(db, {**_film_data("Sneak OV"), "_is_sneak": True})
+    assert db.execute("SELECT * FROM films").fetchone()["original_language"] == "en"
+
+
+def test_write_sneak_film_reuses_row_across_scrapes(db):
+    """The same weekly sneak must not accumulate one row per scrape."""
+    _write_film(db, {**_film_data("SNEAK PREVIEW"), "_is_sneak": True})
+    _write_film(db, {**_film_data("SNEAK PREVIEW"), "_is_sneak": True})
+    assert db.execute("SELECT COUNT(*) FROM films").fetchone()[0] == 1
+
+
+# ── _refresh_sneak_candidates ─────────────────────────────────────────────────
+
+def _sneak_db(db):
+    """Insert a sneak with a Wednesday showtime; returns its release Thursday."""
+    from database import upsert_film, upsert_showtime
+    wednesday = _next_weekday(2)
+    film_id, _ = upsert_film(db, "SNEAK PREVIEW", is_sneak=1, original_language="en")
+    upsert_showtime(db, film_id, "kamera", f"{wednesday.isoformat()}T20:00:00", "OmU", None)
+    db.commit()
+    return (wednesday + timedelta(days=1)).isoformat()
+
+
+def _next_weekday(weekday):
+    today = datetime.now().date()
+    return today + timedelta(days=((weekday - today.weekday()) % 7) or 7)
+
+
+def _candidate(tmdb_id=1):
+    return {"tmdb_id": tmdb_id, "title_original": "Runner", "title_de": None,
+            "original_language": "en", "poster_url": None, "overview": "",
+            "release_year": 2026, "runtime_minutes": 100, "imdb_id": None,
+            "popularity": 5.0}
+
+
+def test_refresh_sneak_candidates_stores_release_lineup(db):
+    release_date = _sneak_db(db)
+    with patch("orchestrator.discover_releases", return_value=[_candidate()]) as mock_discover:
+        _refresh_sneak_candidates()
+
+    mock_discover.assert_called_once_with(release_date, "en")
+    rows = db.execute("SELECT * FROM sneak_candidates").fetchall()
+    assert [r["release_date"] for r in rows] == [release_date]
+
+
+def test_refresh_sneak_candidates_keeps_stored_list_when_tmdb_down(db):
+    release_date = _sneak_db(db)
+    from database import replace_sneak_candidates
+    replace_sneak_candidates(db, release_date, [_candidate(42)])
+    db.commit()
+
+    with patch("orchestrator.discover_releases", return_value=None):
+        _refresh_sneak_candidates()
+
+    rows = db.execute("SELECT tmdb_id FROM sneak_candidates").fetchall()
+    assert [r["tmdb_id"] for r in rows] == [42]
+
+
+def test_refresh_sneak_candidates_without_sneaks_queries_nothing(db):
+    with patch("orchestrator.discover_releases") as mock_discover:
+        _refresh_sneak_candidates()
+    mock_discover.assert_not_called()

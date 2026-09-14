@@ -66,8 +66,10 @@ def notify_new_film(film_id: int, film_data: dict | None = None) -> None:
         year = film["release_year"] or ""
         runtime = film["runtime_minutes"]
         imdb_id = film["imdb_id"]
+        is_sneak = bool(film["is_sneak"])
 
-        lines = ["🎬 <b>Neuer Film im OV-Programm</b>"]
+        lines = ["🎟 <b>Neue Sneak Preview im Programm</b>" if is_sneak
+                 else "🎬 <b>Neuer Film im OV-Programm</b>"]
         lines.append("")
         lines.append(f"<b>{_escape_html(title_original)}</b>")
 
@@ -110,7 +112,11 @@ def notify_new_film(film_id: int, film_data: dict | None = None) -> None:
         link_parts = []
         if imdb_id:
             link_parts.append(f'<a href="{get_imdb_url(imdb_id)}">IMDb</a>')
-        link_parts.append(f'<a href="{WEBAPP_URL.rstrip("/")}/film/{film_id}">Details</a>')
+        if is_sneak:
+            # No film details to link to – the sneak page lists the candidates.
+            link_parts.append(f'<a href="{WEBAPP_URL.rstrip("/")}/sneak">Mögliche Filme</a>')
+        else:
+            link_parts.append(f'<a href="{WEBAPP_URL.rstrip("/")}/film/{film_id}">Details</a>')
         lines.append(" · ".join(link_parts))
 
         message = "\n".join(lines)

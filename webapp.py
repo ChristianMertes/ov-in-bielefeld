@@ -1,5 +1,6 @@
 """Web application for browsing OV/OmU cinema listings in Bielefeld."""
 import logging
+import sqlite3
 import time
 from collections import defaultdict
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -8,14 +9,24 @@ from datetime import datetime, timedelta
 from typing import Annotated
 
 from fastapi import FastAPI, Query, Request
-from fastapi.responses import HTMLResponse, PlainTextResponse, Response
+from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 import cache
 import settings
-from database import get_db, get_film_by_id, get_film_showtimes, get_showtimes_for_films, get_upcoming_films, init_db
+from database import (
+    get_db,
+    get_film_by_id,
+    get_film_showtimes,
+    get_showtimes_for_films,
+    get_sneak_candidates,
+    get_sneak_showtimes,
+    get_upcoming_films,
+    init_db,
+)
 from log_setup import setup_logging
+from sneak import DEFAULT_SNEAK_LANGUAGE, SNEAK_POSTER_URL, official_release_date
 from timeutil import now_local
 from tmdb_client import get_imdb_url, get_omdb_url, get_tmdb_url
 
@@ -160,6 +171,7 @@ def _is_future(dt_str: str, now: datetime) -> bool:
 templates.env.filters["date_de"] = _format_date_de
 templates.env.filters["time_hm"] = _format_time
 templates.env.filters["votes_fmt"] = _format_votes
+templates.env.globals["sneak_poster"] = SNEAK_POSTER_URL
 
 
 def _supports_brotli(request: Request) -> bool:
@@ -280,6 +292,11 @@ async def film_detail(request: Request, film_id: int) -> Response:
             html = templates.get_template("404.html").render({"request": request})
             return HTMLResponse(html, status_code=404)
 
+        if film["is_sneak"]:
+            # There is no film to show details of – the sneak page lists the
+            # candidates instead.
+            return RedirectResponse("/sneak", status_code=302)
+
         showtimes = get_film_showtimes(db, film_id)
         now = now_local()
 
@@ -312,6 +329,67 @@ async def film_detail(request: Request, film_id: int) -> Response:
     return Response(content=content, media_type="text/html; charset=utf-8", headers=headers)
 
 
+def _sneak_groups(db: sqlite3.Connection, now: datetime) -> list[dict]:
+    """Group upcoming sneak showtimes by the release date they point at.
+
+    Two cinemas running a sneak in the same week share one release Thursday and
+    therefore one candidate list, so the grouping is by release date, not by
+    screening.
+    """
+    groups: dict[str, dict] = {}
+    for st in get_sneak_showtimes(db):
+        try:
+            screening_date = datetime.fromisoformat(st["showtime"]).date()
+        except (ValueError, TypeError):
+            continue
+        release_date = official_release_date(screening_date).isoformat()
+        group = groups.setdefault(release_date, {
+            "release_date": release_date,
+            "language": st["original_language"] or DEFAULT_SNEAK_LANGUAGE,
+            "showtimes": [],
+        })
+        showtime = dict(st)
+        showtime["relative_label"] = _next_showtime_label(st["showtime"], now)
+        group["showtimes"].append(showtime)
+
+    candidates_by_date = get_sneak_candidates(db, list(groups))
+    for release_date, group in groups.items():
+        group["candidates"] = candidates_by_date.get(release_date, [])
+    return [groups[key] for key in sorted(groups)]
+
+
+@app.get("/sneak", response_class=HTMLResponse)
+async def sneak_overview(request: Request) -> Response:
+    """Overview of upcoming sneak previews and the films they could be showing."""
+    cache_key = "sneak"
+    brotli_ok = _supports_brotli(request)
+    cached = cache.get(cache_key) if brotli_ok else cache.get_plain(cache_key)
+    if cached:
+        headers = {"Vary": "Accept-Encoding"}
+        if brotli_ok:
+            headers["Content-Encoding"] = "br"
+        return Response(content=cached, media_type="text/html; charset=utf-8", headers=headers)
+
+    now = now_local()
+    with get_db() as db:
+        groups = _sneak_groups(db, now)
+
+    html = templates.get_template("sneak.html").render({
+        "request": request,
+        "groups": groups,
+        "cinema_names": CINEMA_DISPLAY_NAMES,
+        "language_names": LANGUAGE_DISPLAY_NAMES,
+        "now": now,
+    })
+    if brotli_ok:
+        content = cache.put(cache_key, html)
+        headers = {"Content-Encoding": "br", "Vary": "Accept-Encoding"}
+    else:
+        content = cache.put_plain(cache_key, html)
+        headers = {"Vary": "Accept-Encoding"}
+    return Response(content=content, media_type="text/html; charset=utf-8", headers=headers)
+
+
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -332,10 +410,11 @@ async def robots_txt() -> str:
 @app.get("/sitemap.xml")
 async def sitemap_xml() -> Response:
     base = settings.WEBAPP_URL
-    urls = [base + "/"]
+    urls = [base + "/", base + "/sneak"]
     with get_db() as db:
         films = get_upcoming_films(db)
-        urls.extend(f"{base}/film/{f['id']}" for f in films)
+        # Sneak detail pages only redirect to /sneak, which is listed above.
+        urls.extend(f"{base}/film/{f['id']}" for f in films if not f["is_sneak"])
     today = now_local().date().isoformat()
     url_entries = "\n".join(
         f"  <url><loc>{u}</loc><lastmod>{today}</lastmod></url>" for u in urls

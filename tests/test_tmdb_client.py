@@ -3,16 +3,19 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
+import requests
 
 import settings
 from database import get_db, set_tmdb_cache
 from tmdb_client import (
+    MAX_RELEASE_CANDIDATES,
     NEGATIVE_CACHE_TTL,
     TmdbUnavailableError,
     _clean_title_for_search,
     _extract_year,
     _get_movie_details,
     _tmdb_search_request,
+    discover_releases,
     get_imdb_url,
     get_omdb_url,
     get_tmdb_url,
@@ -385,3 +388,117 @@ def test_lookup_film_api_miss_caches_negative(db, monkeypatch):
         ).fetchone()
     assert cached is not None
     assert cached["tmdb_id"] is None
+
+
+# ── discover_releases ─────────────────────────────────────────────────────────
+
+_DISCOVER_RESULT = {
+    "results": [{
+        "id": 1204680,
+        "title": "Coyote vs. ACME",
+        "original_title": "Coyote vs. Acme",
+        "original_language": "en",
+        "release_date": "2026-09-17",
+        "popularity": 593.0,
+        "overview": "Wile E. Coyote verklagt ACME.",
+        "poster_path": "/coyote.jpg",
+    }]
+}
+
+_DISCOVER_DETAIL = {
+    "title": "Coyote vs. ACME",
+    "imdb_id": "tt1756855",
+    "runtime": 101,
+    "release_date": "2026-08-20",
+    "overview": "Wile E. Coyote verklagt ACME.",
+}
+
+
+def test_discover_releases_maps_fields(monkeypatch):
+    monkeypatch.setattr(settings, "TMDB_API_KEY", "key")
+    with patch("tmdb_client.requests.get") as mock_get:
+        mock_get.side_effect = [_mock_resp(_DISCOVER_RESULT), _mock_resp(_DISCOVER_DETAIL)]
+        candidates = discover_releases("2026-09-17")
+
+    assert len(candidates) == 1
+    c = candidates[0]
+    assert c["tmdb_id"] == 1204680
+    assert c["title_original"] == "Coyote vs. Acme"
+    assert c["title_de"] == "Coyote vs. ACME"
+    assert c["imdb_id"] == "tt1756855"
+    assert c["runtime_minutes"] == 101
+    assert c["poster_url"].endswith("/coyote.jpg")
+    assert c["popularity"] == 593.0
+
+
+def test_discover_releases_year_comes_from_detail(monkeypatch):
+    """The discover date is the German start; the film's own year identifies re-releases."""
+    monkeypatch.setattr(settings, "TMDB_API_KEY", "key")
+    with patch("tmdb_client.requests.get") as mock_get:
+        mock_get.side_effect = [
+            _mock_resp({"results": [{**_DISCOVER_RESULT["results"][0], "id": 41870}]}),
+            _mock_resp({"release_date": "2001-01-01", "runtime": 69}),
+        ]
+        candidates = discover_releases("2026-09-17")
+
+    assert candidates[0]["release_year"] == 2001
+
+
+def test_discover_releases_queries_german_theatrical_starts(monkeypatch):
+    monkeypatch.setattr(settings, "TMDB_API_KEY", "key")
+    with patch("tmdb_client.requests.get") as mock_get:
+        mock_get.return_value = _mock_resp({"results": []})
+        discover_releases("2026-09-17", original_language="fr")
+
+    params = mock_get.call_args.kwargs["params"]
+    assert params["region"] == "DE"
+    assert params["with_original_language"] == "fr"
+    assert params["release_date.gte"] == "2026-09-17"
+    assert params["release_date.lte"] == "2026-09-17"
+
+
+def test_discover_releases_empty_list_when_no_releases(monkeypatch):
+    monkeypatch.setattr(settings, "TMDB_API_KEY", "key")
+    with patch("tmdb_client.requests.get") as mock_get:
+        mock_get.return_value = _mock_resp({"results": []})
+        assert discover_releases("2026-09-17") == []
+
+
+def test_discover_releases_none_when_tmdb_unreachable(monkeypatch):
+    """None must be distinguishable from 'no releases', so stale data can be kept."""
+    monkeypatch.setattr(settings, "TMDB_API_KEY", "key")
+    with patch("tmdb_client.requests.get", side_effect=requests.ConnectionError("boom")):
+        assert discover_releases("2026-09-17") is None
+
+
+def test_discover_releases_none_without_api_key(monkeypatch):
+    monkeypatch.setattr(settings, "TMDB_API_KEY", "")
+    assert discover_releases("2026-09-17") is None
+
+
+def test_discover_releases_caps_candidate_count(monkeypatch):
+    monkeypatch.setattr(settings, "TMDB_API_KEY", "key")
+    many = {"results": [
+        {**_DISCOVER_RESULT["results"][0], "id": i} for i in range(MAX_RELEASE_CANDIDATES + 5)
+    ]}
+    with patch("tmdb_client.requests.get") as mock_get:
+        mock_get.side_effect = [_mock_resp(many), *(
+            _mock_resp(_DISCOVER_DETAIL) for _ in range(MAX_RELEASE_CANDIDATES)
+        )]
+        candidates = discover_releases("2026-09-17")
+
+    assert len(candidates) == MAX_RELEASE_CANDIDATES
+
+
+def test_discover_releases_survives_failing_detail_lookup(monkeypatch):
+    monkeypatch.setattr(settings, "TMDB_API_KEY", "key")
+    with patch("tmdb_client.requests.get") as mock_get:
+        mock_get.side_effect = [
+            _mock_resp(_DISCOVER_RESULT),
+            requests.ConnectionError("detail down"),
+        ]
+        candidates = discover_releases("2026-09-17")
+
+    assert candidates[0]["title_original"] == "Coyote vs. Acme"
+    assert candidates[0]["imdb_id"] is None
+    assert candidates[0]["release_year"] == 2026

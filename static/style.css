@@ -543,6 +543,77 @@ footer a:hover {
     color: var(--accent);
 }
 
+/* ── Sneak previews ──────────────────────────────────────────────────────── */
+
+.sneak-badge {
+    color: var(--accent);
+}
+
+.sneak-intro {
+    display: grid;
+    grid-template-columns: 160px 1fr;
+    gap: 1.5rem;
+    margin-bottom: 2.5rem;
+}
+
+.sneak-intro-poster img {
+    width: 100%;
+    display: block;
+    border-radius: var(--radius);
+}
+
+.sneak-intro h1 {
+    font-size: 1.8rem;
+    margin-bottom: 0.6rem;
+    color: var(--text);
+}
+
+.sneak-intro p {
+    font-size: 0.92rem;
+    color: var(--text-muted);
+    line-height: 1.7;
+    margin-bottom: 0.6rem;
+}
+
+.sneak-group {
+    margin-bottom: 2.5rem;
+}
+
+.sneak-group .showtimes-section {
+    margin-bottom: 1.5rem;
+}
+
+.sneak-candidates-heading {
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: var(--text);
+    margin-bottom: 0.8rem;
+}
+
+.sneak-candidates-note {
+    display: block;
+    font-size: 0.8rem;
+    font-weight: 400;
+    color: var(--text-muted);
+}
+
+.sneak-group .film-list {
+    padding-bottom: 0;
+}
+
+.candidate-info h2 {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.15rem;
+    font-weight: 700;
+    margin-bottom: 0.15rem;
+}
+
+.candidate-overview {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    line-height: 1.6;
+}
+
 /* ── Responsive ──────────────────────────────────────────────────────────── */
 
 @media (max-width: 640px) {
@@ -557,6 +628,10 @@ footer a:hover {
         grid-template-columns: 120px 1fr;
     }
     .film-detail-poster { width: 120px; }
+    .sneak-intro {
+        grid-template-columns: 100px 1fr;
+        gap: 1rem;
+    }
     h1 { font-size: 1.3rem; }
     .showtime-table td,
     .showtime-table th {

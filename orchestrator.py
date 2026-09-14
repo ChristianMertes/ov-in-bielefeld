@@ -11,14 +11,18 @@ import logging
 import re
 import sqlite3
 from collections.abc import Callable
+from datetime import datetime
 from typing import Any
 
 import cache
 from database import (
     cleanup_old_showtimes,
+    cleanup_old_sneak_candidates,
     get_db,
     get_films_with_imdb_id,
+    get_sneak_showtimes,
     init_db,
+    replace_sneak_candidates,
     update_film_ratings,
     update_film_rt_score,
     upsert_film,
@@ -27,7 +31,8 @@ from database import (
 from ratings_client import fetch_imdb_ratings, fetch_rt_scores
 from scrapers.arthouse import scrape_arthouse
 from scrapers.cinemaxx import scrape_cinemaxx
-from tmdb_client import is_relevant_language, lookup_film
+from sneak import DEFAULT_SNEAK_LANGUAGE, is_sneak_title, official_release_date, sneak_language
+from tmdb_client import discover_releases, is_relevant_language, lookup_film
 
 logger = logging.getLogger(__name__)
 
@@ -145,6 +150,12 @@ def run_scrape(notify_callback: Callable[[int, dict], None] | None = None) -> di
                         update_film_rt_score(db, film["id"], score)
             logger.info("RT scores: updated %d of %d films", len(rt_scores), len(films_to_rate))
 
+    # ── Phase 5: Sneak preview candidates ──────────────────────────────────
+    try:
+        _refresh_sneak_candidates()
+    except Exception as e:  # noqa: BLE001
+        logger.error("Sneak candidate refresh failed: %s", e)
+
     if notify_callback and new_films:
         for film_id, film_data in new_films:
             try:
@@ -161,6 +172,40 @@ def run_scrape(notify_callback: Callable[[int, dict], None] | None = None) -> di
     }
 
 
+def _refresh_sneak_candidates() -> None:
+    """Fetch the release line-up every upcoming sneak preview could draw from.
+
+    A sneak shows a film that opens the next release Thursday, so one TMDb
+    discover query per distinct Thursday gives the shortlist. TMDb being down
+    leaves the stored line-up in place rather than emptying the page.
+    """
+    with get_db() as db:
+        showtimes = get_sneak_showtimes(db)
+
+    languages_by_date: dict[str, str] = {}
+    for st in showtimes:
+        try:
+            screening_date = datetime.fromisoformat(st["showtime"]).date()
+        except (ValueError, TypeError):
+            continue
+        release_date = official_release_date(screening_date).isoformat()
+        languages_by_date.setdefault(
+            release_date, st["original_language"] or DEFAULT_SNEAK_LANGUAGE
+        )
+
+    for release_date, language in languages_by_date.items():
+        candidates = discover_releases(release_date, language)
+        if candidates is None:
+            logger.warning("Sneak candidates for %s unavailable – keeping stored list", release_date)
+            continue
+        with get_db() as db:
+            replace_sneak_candidates(db, release_date, candidates)
+        logger.info("Sneak candidates for %s (%s): %d", release_date, language, len(candidates))
+
+    with get_db() as db:
+        cleanup_old_sneak_candidates(db)
+
+
 def _enrich_with_tmdb(film_data: dict) -> dict | None:
     """Look up film on TMDb and filter by original language.
 
@@ -171,6 +216,14 @@ def _enrich_with_tmdb(film_data: dict) -> dict | None:
     This must NOT be called while a write transaction is open.
     """
     title = film_data["title_display"]
+
+    if is_sneak_title(title):
+        # A sneak's title is a placeholder, not a film title – and TMDb knows a
+        # real film called "Sneak Preview", which a lookup happily returns.
+        film_data["_is_sneak"] = True
+        film_data["_tmdb_data"] = None
+        return film_data
+
     year = film_data.get("release_year")
     original_title = film_data.get("_original_title", "")
     arthouse_year = film_data.get("_arthouse_year")  # From detail page scrape
@@ -220,8 +273,19 @@ def _write_film(db: sqlite3.Connection, film_data: dict) -> tuple[int, bool]:
     title = film_data["title_display"]
     tmdb_data = film_data.get("_tmdb_data")
 
-    kwargs = {}
-    if tmdb_data:
+    kwargs: dict[str, Any] = {}
+    if film_data.get("_is_sneak"):
+        # Deliberately no year, runtime, poster or original title: what the
+        # scrapers report for a sneak describes the slot in the programme, not
+        # the film that will run in it. The language does hold – cinemas
+        # announce whether a sneak is an OV one.
+        kwargs["is_sneak"] = 1
+        kwargs["original_language"] = (
+            sneak_language(title)
+            or film_data.get("_detected_language")
+            or DEFAULT_SNEAK_LANGUAGE
+        )
+    elif tmdb_data:
         kwargs.update({
             "title_original": tmdb_data.get("title_original"),
             "title_de": tmdb_data.get("title_de"),
