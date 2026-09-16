@@ -7,7 +7,7 @@ Set the environment variable TMDB_API_KEY.
 """
 import logging
 import re
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import requests
 
@@ -184,12 +184,20 @@ def _tmdb_search_request(title: str, api_key: str, language: str | None = None,
     }
 
 
-def _get_movie_details(tmdb_id: int, api_key: str, language: str = "de-DE") -> dict | None:
-    """Fetch detailed movie info including IMDb ID."""
+def _get_movie_details(tmdb_id: int, api_key: str, language: str = "de-DE",
+                      append: str | None = None) -> dict | None:
+    """Fetch detailed movie info including IMDb ID.
+
+    `append` pulls sub-resources into the same request (TMDb's
+    append_to_response), so asking for release dates costs no extra call.
+    """
+    params = {"api_key": api_key, "language": language}
+    if append:
+        params["append_to_response"] = append
     try:
         resp = requests.get(
             f"{TMDB_BASE_URL}/movie/{tmdb_id}",
-            params={"api_key": api_key, "language": language},
+            params=params,
             timeout=10
         )
         resp.raise_for_status()
@@ -206,6 +214,15 @@ _THEATRICAL_RELEASE_TYPES = "2|3"
 # Bounds the per-candidate detail lookups below. A German release Thursday
 # carries a handful of films per language; anything past that is noise.
 MAX_RELEASE_CANDIDATES = 12
+
+# Numeric counterparts of _THEATRICAL_RELEASE_TYPES, for reading release dates
+# back out of a detail response.
+_THEATRICAL_TYPE_IDS = {2, 3}
+
+# A German start this long after the film's own release is a re-release or a
+# catalogue title. Festival runs and staggered international releases put a
+# year or so between the two, so the cut-off sits well clear of those.
+_MAX_RELEASE_DELAY = timedelta(days=2 * 365)
 
 
 def discover_releases(release_date: str, original_language: str = "en") -> list[dict] | None:
@@ -239,21 +256,68 @@ def discover_releases(release_date: str, original_language: str = "en") -> list[
         logger.error("TMDb discover failed for %s: %s", release_date, _redact(e))
         return None
 
-    return [
-        _release_candidate(movie, api_key)
-        for movie in results[:MAX_RELEASE_CANDIDATES]
-    ]
+    candidates = []
+    for movie in results[:MAX_RELEASE_CANDIDATES]:
+        details = _get_movie_details(movie["id"], api_key, language="de-DE",
+                                     append="release_dates") or {}
+        if _is_rerelease(details, release_date):
+            logger.debug("Skipping re-release '%s' for %s", movie.get("title"), release_date)
+            continue
+        candidates.append(_release_candidate(movie, details))
+    return candidates
 
 
-def _release_candidate(movie: dict, api_key: str) -> dict:
-    """Build a candidate record from a discover result, enriched with details.
+def _parse_date(value: str | None) -> date | None:
+    """Parse a TMDb date, which may carry a time part ('2019-04-24T00:00:00Z')."""
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value[:10])
+    except ValueError:
+        return None
+
+
+def _german_theatrical_dates(details: dict) -> list[date]:
+    """Return the German cinema release dates TMDb knows for a film."""
+    for country in details.get("release_dates", {}).get("results", []):
+        if country.get("iso_3166_1") != "DE":
+            continue
+        return [
+            parsed
+            for entry in country.get("release_dates", [])
+            if entry.get("type") in _THEATRICAL_TYPE_IDS
+            and (parsed := _parse_date(entry.get("release_date")))
+        ]
+    return []
+
+
+def _is_rerelease(details: dict, release_date: str) -> bool:
+    """True if this German start is not the film's first run in cinemas.
+
+    A sneak preview shows a film about to open, so a film returning to cinemas
+    is not a candidate. Two signs, because TMDb has either for most films and
+    rarely both: an earlier German cinema date, or a film that is simply too
+    old for this to be its first release anywhere. Without data on a film,
+    neither triggers and the film stays a candidate.
+    """
+    start = _parse_date(release_date)
+    if start is None:
+        return False
+
+    own_release = _parse_date(details.get("release_date"))
+    if own_release and start - own_release > _MAX_RELEASE_DELAY:
+        return True
+
+    return any(earlier < start for earlier in _german_theatrical_dates(details))
+
+
+def _release_candidate(movie: dict, details: dict) -> dict:
+    """Build a candidate record from a discover result and its detail response.
 
     The discover response dates a film by the release we queried for, so the
-    film's own release year – which is what tells a new film apart from a
-    re-release sharing that date – has to come from the detail endpoint.
+    film's own release year – which is what tells a new film apart from an
+    older one sharing that date – has to come from the detail endpoint.
     """
-    details = _get_movie_details(movie["id"], api_key, language="de-DE") or {}
-
     title_de = details.get("title") or movie.get("title")
     if title_de == movie.get("original_title"):
         title_de = None

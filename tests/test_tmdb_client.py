@@ -432,16 +432,78 @@ def test_discover_releases_maps_fields(monkeypatch):
 
 
 def test_discover_releases_year_comes_from_detail(monkeypatch):
-    """The discover date is the German start; the film's own year identifies re-releases."""
+    """The discover date is the German start, so the film's own year needs the detail call."""
     monkeypatch.setattr(settings, "TMDB_API_KEY", "key")
     with patch("tmdb_client.requests.get") as mock_get:
         mock_get.side_effect = [
-            _mock_resp({"results": [{**_DISCOVER_RESULT["results"][0], "id": 41870}]}),
-            _mock_resp({"release_date": "2001-01-01", "runtime": 69}),
+            _mock_resp(_DISCOVER_RESULT),
+            _mock_resp({"release_date": "2025-12-14", "runtime": 109}),
         ]
         candidates = discover_releases("2026-09-17")
 
-    assert candidates[0]["release_year"] == 2001
+    assert candidates[0]["release_year"] == 2025
+
+
+def _de_releases(*dates):
+    return {"results": [{"iso_3166_1": "DE",
+                         "release_dates": [{"release_date": f"{d}T00:00:00.000Z", "type": t}
+                                           for d, t in dates]}]}
+
+
+def test_discover_releases_drops_film_returning_to_cinemas(monkeypatch):
+    """An earlier German cinema date means a re-release, which no sneak shows."""
+    monkeypatch.setattr(settings, "TMDB_API_KEY", "key")
+    with patch("tmdb_client.requests.get") as mock_get:
+        mock_get.side_effect = [
+            _mock_resp(_DISCOVER_RESULT),
+            _mock_resp({
+                "release_date": "2026-08-20",
+                "release_dates": _de_releases(("2026-03-05", 3), ("2026-09-17", 3)),
+            }),
+        ]
+        assert discover_releases("2026-09-17") == []
+
+
+def test_discover_releases_drops_film_too_old_for_a_first_release(monkeypatch):
+    """A 2001 film opening in 2026 is a catalogue title, even without German history."""
+    monkeypatch.setattr(settings, "TMDB_API_KEY", "key")
+    with patch("tmdb_client.requests.get") as mock_get:
+        mock_get.side_effect = [
+            _mock_resp(_DISCOVER_RESULT),
+            _mock_resp({"release_date": "2001-01-01", "runtime": 69,
+                        "release_dates": _de_releases(("2026-09-17", 3))}),
+        ]
+        assert discover_releases("2026-09-17") == []
+
+
+def test_discover_releases_keeps_film_delayed_by_a_festival_run(monkeypatch):
+    """Premiering abroad months before the German start is normal, not a re-release."""
+    monkeypatch.setattr(settings, "TMDB_API_KEY", "key")
+    with patch("tmdb_client.requests.get") as mock_get:
+        mock_get.side_effect = [
+            _mock_resp(_DISCOVER_RESULT),
+            _mock_resp({"release_date": "2025-12-14",
+                        "release_dates": _de_releases(("2026-09-17", 3))}),
+        ]
+        assert len(discover_releases("2026-09-17")) == 1
+
+
+def test_discover_releases_keeps_film_without_release_data(monkeypatch):
+    """No data is no reason to drop a candidate."""
+    monkeypatch.setattr(settings, "TMDB_API_KEY", "key")
+    with patch("tmdb_client.requests.get") as mock_get:
+        mock_get.side_effect = [_mock_resp(_DISCOVER_RESULT), _mock_resp({})]
+        assert len(discover_releases("2026-09-17")) == 1
+
+
+def test_discover_releases_asks_for_release_dates_in_one_call(monkeypatch):
+    monkeypatch.setattr(settings, "TMDB_API_KEY", "key")
+    with patch("tmdb_client.requests.get") as mock_get:
+        mock_get.side_effect = [_mock_resp(_DISCOVER_RESULT), _mock_resp(_DISCOVER_DETAIL)]
+        discover_releases("2026-09-17")
+
+    detail_params = mock_get.call_args_list[1].kwargs["params"]
+    assert detail_params["append_to_response"] == "release_dates"
 
 
 def test_discover_releases_queries_german_theatrical_starts(monkeypatch):

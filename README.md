@@ -20,7 +20,7 @@ Deployed to https://ov-in-bielefeld.de/.
 - Arthouse detail pages fetched for better year disambiguation on TMDb
 - Telegram bot: notification for new films + `/programm` command
 - Web UI with cinema filter and sorting by date, title, rating, or popularity
-- Sneak preview page (`/sneak`): sneaks are never looked up on TMDb (their titles are placeholders); instead the page lists every film opening in German cinemas on the release Thursday the sneak points at
+- Sneak preview page (`/sneak`): sneaks are never looked up on TMDb (their titles are placeholders); instead the page lists every film opening in German cinemas on the release Thursday the sneak points at, minus re-releases (an earlier German cinema date, or a film too old for this to be its first release)
 - In-process Brotli page cache, invalidated after each scrape and at midnight (date-relative labels)
 - Daily-rotating log files, old logs compressed with xz
 
