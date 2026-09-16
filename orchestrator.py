@@ -11,7 +11,7 @@ import logging
 import re
 import sqlite3
 from collections.abc import Callable
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 import cache
@@ -32,6 +32,7 @@ from ratings_client import fetch_imdb_ratings, fetch_rt_scores
 from scrapers.arthouse import scrape_arthouse
 from scrapers.cinemaxx import scrape_cinemaxx
 from sneak import DEFAULT_SNEAK_LANGUAGE, is_sneak_title, official_release_date, sneak_language
+from timeutil import now_local
 from tmdb_client import discover_releases, is_relevant_language, lookup_film
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,12 @@ _TITLE_SEPARATOR = re.compile(r"\s+[-–—]\s+")
 
 # Shorter fragments ("Teil 2", "OV") are too ambiguous to search TMDb with.
 _MIN_TITLE_PART_LEN = 3
+
+# How many release Thursdays to fetch a candidate line-up for in advance, on
+# top of the ones upcoming sneaks already point at. Two covers the week a
+# cinema's programme reaches into, so a sneak's line-up is stored before the
+# sneak is announced.
+PREFETCH_RELEASE_DATES = 2
 
 
 def _title_candidates(title: str) -> list[str]:
@@ -172,16 +179,15 @@ def run_scrape(notify_callback: Callable[[int, dict], None] | None = None) -> di
     }
 
 
-def _refresh_sneak_candidates() -> None:
-    """Fetch the release line-up every upcoming sneak preview could draw from.
+def _sneak_release_dates(showtimes: list) -> dict[str, str]:
+    """Return the release dates to fetch a line-up for, each with its language.
 
-    A sneak shows a film that opens the next release Thursday, so one TMDb
-    discover query per distinct Thursday gives the shortlist. TMDb being down
-    leaves the stored line-up in place rather than emptying the page.
+    Every upcoming sneak contributes the Thursday it points at. On top of that
+    the next few Thursdays are fetched ahead of time: a cinema announces its
+    programme about a week out, so without the head start the Thursday a newly
+    announced sneak points at would have no line-up stored until the scrape
+    after the one that discovered the sneak.
     """
-    with get_db() as db:
-        showtimes = get_sneak_showtimes(db)
-
     languages_by_date: dict[str, str] = {}
     for st in showtimes:
         try:
@@ -193,7 +199,29 @@ def _refresh_sneak_candidates() -> None:
             release_date, st["original_language"] or DEFAULT_SNEAK_LANGUAGE
         )
 
-    for release_date, language in languages_by_date.items():
+    if not languages_by_date:
+        return {}  # No sneaks in the programme – nothing to look ahead for.
+
+    language = next(iter(languages_by_date.values()))
+    upcoming = official_release_date(now_local().date())
+    for _ in range(PREFETCH_RELEASE_DATES):
+        languages_by_date.setdefault(upcoming.isoformat(), language)
+        upcoming += timedelta(days=7)
+
+    return languages_by_date
+
+
+def _refresh_sneak_candidates() -> None:
+    """Fetch the release line-up every upcoming sneak preview could draw from.
+
+    A sneak shows a film that opens the next release Thursday, so one TMDb
+    discover query per distinct Thursday gives the shortlist. TMDb being down
+    leaves the stored line-up in place rather than emptying the page.
+    """
+    with get_db() as db:
+        showtimes = get_sneak_showtimes(db)
+
+    for release_date, language in _sneak_release_dates(showtimes).items():
         candidates = discover_releases(release_date, language)
         if candidates is None:
             logger.warning("Sneak candidates for %s unavailable – keeping stored list", release_date)

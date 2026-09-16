@@ -7,7 +7,15 @@ import pytest
 import database
 import settings
 from database import get_film_by_id
-from orchestrator import _enrich_with_tmdb, _refresh_sneak_candidates, _write_film, run_scrape
+from orchestrator import (
+    PREFETCH_RELEASE_DATES,
+    _enrich_with_tmdb,
+    _refresh_sneak_candidates,
+    _sneak_release_dates,
+    _write_film,
+    run_scrape,
+)
+from sneak import official_release_date
 
 
 def _future(days=1):
@@ -462,9 +470,11 @@ def test_refresh_sneak_candidates_stores_release_lineup(db):
     with patch("orchestrator.discover_releases", return_value=[_candidate()]) as mock_discover:
         _refresh_sneak_candidates()
 
-    mock_discover.assert_called_once_with(release_date, "en")
-    rows = db.execute("SELECT * FROM sneak_candidates").fetchall()
-    assert [r["release_date"] for r in rows] == [release_date]
+    assert (release_date, "en") in [c.args for c in mock_discover.call_args_list]
+    rows = db.execute(
+        "SELECT * FROM sneak_candidates WHERE release_date = ?", (release_date,)
+    ).fetchall()
+    assert len(rows) == 1
 
 
 def test_refresh_sneak_candidates_keeps_stored_list_when_tmdb_down(db):
@@ -484,3 +494,34 @@ def test_refresh_sneak_candidates_without_sneaks_queries_nothing(db):
     with patch("orchestrator.discover_releases") as mock_discover:
         _refresh_sneak_candidates()
     mock_discover.assert_not_called()
+
+
+def test_refresh_sneak_candidates_fetches_upcoming_thursdays_in_advance(db):
+    """The Thursday a not-yet-announced sneak will point at is fetched already."""
+    _sneak_db(db)
+    with patch("orchestrator.discover_releases", return_value=[]) as mock_discover:
+        _refresh_sneak_candidates()
+
+    queried = {c.args[0] for c in mock_discover.call_args_list}
+    upcoming = official_release_date(datetime.now().date())
+    for _ in range(PREFETCH_RELEASE_DATES):
+        assert upcoming.isoformat() in queried
+        upcoming += timedelta(days=7)
+
+
+def test_refresh_sneak_candidates_look_ahead_uses_sneak_language(db):
+    from database import upsert_film, upsert_showtime
+    wednesday = _next_weekday(2)
+    film_id, _ = upsert_film(db, "Sneak Preview VF", is_sneak=1, original_language="fr")
+    upsert_showtime(db, film_id, "kamera", f"{wednesday.isoformat()}T20:00:00", "OmU", None)
+    db.commit()
+
+    with patch("orchestrator.discover_releases", return_value=[]) as mock_discover:
+        _refresh_sneak_candidates()
+
+    assert {c.args[1] for c in mock_discover.call_args_list} == {"fr"}
+
+
+def test_sneak_release_dates_empty_without_sneaks():
+    """No sneaks in the programme means no TMDb traffic at all."""
+    assert _sneak_release_dates([]) == {}
