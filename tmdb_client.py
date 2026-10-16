@@ -156,12 +156,14 @@ def _tmdb_search_request(title: str, api_key: str, language: str | None = None,
     # Take the first result (highest relevance)
     movie = results[0]
 
-    original_language = movie.get("original_language", "")
-
     # Get more details (including IMDb ID, runtime, and German title)
     details = _get_movie_details(movie["id"], api_key, language="de-DE")
 
-    tmdb_id = movie["id"]
+    return _film_record(movie, details)
+
+
+def _film_record(movie: dict, details: dict | None) -> dict:
+    """Map a TMDb movie plus its detail response into the shape we store."""
     poster_path = movie.get("poster_path")
 
     # German title: prefer details response (searched with de-DE), fall back to search result title
@@ -171,11 +173,11 @@ def _tmdb_search_request(title: str, api_key: str, language: str | None = None,
         title_de = None
 
     return {
-        "tmdb_id": tmdb_id,
+        "tmdb_id": movie["id"],
         "imdb_id": details.get("imdb_id") if details else None,
         "title_original": movie.get("original_title"),
         "title_de": title_de,
-        "original_language": original_language,
+        "original_language": movie.get("original_language", ""),
         "poster_url": f"{TMDB_IMAGE_BASE}{poster_path}" if poster_path else None,
         "overview": movie.get("overview", ""),
         "release_year": _extract_year(movie.get("release_date")),
@@ -336,6 +338,110 @@ def _release_candidate(movie: dict, details: dict) -> dict:
         "runtime_minutes": details.get("runtime"),
         "popularity": movie.get("popularity"),
     }
+
+
+# People to search a film by. The director identifies a film on its own where
+# the page names one; two cast members are enough everywhere else, and asking
+# for more only costs lookups.
+_MAX_CAST_LOOKUPS = 2
+
+# Shorter than this, a confirmed title is too generic to trust as a match.
+_MIN_TITLE_MATCH = 3
+
+# Programme pages state the production year, TMDb the release year, and for a
+# film premiering at a festival the two differ by up to a year either way.
+_CREDIT_YEAR_SLACK = 1
+
+
+def find_by_credits(title: str, year: int | None, cast: list[str] | None = None,
+                    director: str | None = None) -> dict | None:
+    """Identify a film from the people in it and the year it was produced.
+
+    For when the title itself cannot be searched – a programme banner glued to
+    the front of it, a German title TMDb files differently. The credits narrow
+    the field to a handful of films; `title` then has to confirm one of them,
+    by containing its German or original title. Without that confirmation this
+    returns nothing, because credits and a year alone would just as happily
+    return the wrong film from the same director.
+    """
+    api_key = settings.TMDB_API_KEY
+    if not api_key or not year:
+        return None
+
+    crew_ids = _person_ids([director] if director else [], api_key)
+    cast_ids = _person_ids((cast or [])[:_MAX_CAST_LOOKUPS], api_key)
+    if not crew_ids and not cast_ids:
+        return None
+
+    for movie in _discover_by_people(cast_ids, crew_ids, year, api_key):
+        if not _title_confirms(movie, title):
+            continue
+        details = _get_movie_details(movie["id"], api_key, language="de-DE")
+        if details and details.get("title"):
+            movie = {**movie, "title": details["title"]}
+        logger.info("Identified '%s' by credits as TMDb %s", title, movie["id"])
+        return _film_record(movie, details)
+
+    return None
+
+
+def _person_ids(names: list[str], api_key: str) -> list[int]:
+    """Resolve person names to TMDb ids, skipping the ones it does not know."""
+    ids = []
+    for name in names:
+        try:
+            resp = requests.get(
+                f"{TMDB_BASE_URL}/search/person",
+                params={"api_key": api_key, "query": name},
+                timeout=10,
+            )
+            resp.raise_for_status()
+            results = resp.json().get("results", [])
+        except requests.RequestException as e:
+            logger.warning("TMDb person search failed for '%s': %s", name, _redact(e))
+            continue
+        if results:
+            ids.append(results[0]["id"])
+    return ids
+
+
+def _discover_by_people(cast_ids: list[int], crew_ids: list[int], year: int,
+                        api_key: str) -> list[dict]:
+    """Return the films these people made around that year, most popular first."""
+    params: dict[str, str | int] = {
+        "api_key": api_key,
+        "language": "de-DE",
+        "sort_by": "popularity.desc",
+        "primary_release_date.gte": f"{year - _CREDIT_YEAR_SLACK}-01-01",
+        "primary_release_date.lte": f"{year + _CREDIT_YEAR_SLACK}-12-31",
+    }
+    if cast_ids:
+        params["with_cast"] = ",".join(str(i) for i in cast_ids)
+    if crew_ids:
+        params["with_crew"] = ",".join(str(i) for i in crew_ids)
+
+    try:
+        resp = requests.get(f"{TMDB_BASE_URL}/discover/movie", params=params, timeout=10)
+        resp.raise_for_status()
+        return resp.json().get("results", [])
+    except requests.RequestException as e:
+        logger.warning("TMDb credit discovery failed: %s", _redact(e))
+        return []
+
+
+def _normalise_title(title: str | None) -> str:
+    """Reduce a title to its words, keeping letters of any script."""
+    return " ".join(re.sub(r"\W+", " ", title or "", flags=re.UNICODE).casefold().split())
+
+
+def _title_confirms(movie: dict, scraped_title: str) -> bool:
+    """True if a candidate's German or original title sits in the scraped one."""
+    haystack = f" {_normalise_title(scraped_title)} "
+    for key in ("title", "original_title"):
+        needle = _normalise_title(movie.get(key))
+        if len(needle) >= _MIN_TITLE_MATCH and f" {needle} " in haystack:
+            return True
+    return False
 
 
 def is_relevant_language(language_code: str) -> bool:

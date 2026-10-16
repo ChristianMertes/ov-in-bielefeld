@@ -99,9 +99,10 @@ def scrape_arthouse() -> list[dict]:
 
     logger.info("Found %d films with OV/OmU showtimes", len(films))
 
-    # Fetch detail pages for films missing a release year (improves TMDb disambiguation)
+    # Fetch every detail page: beyond disambiguating the year, its credits and
+    # production country are what identify a film the title search misses.
     for film in films:
-        if film.get("detail_url") and not film.get("release_year"):
+        if film.get("detail_url"):
             try:
                 detail = _fetch_film_detail(film["detail_url"])
                 # Store separately – don't overwrite release_year; used as a retry hint
@@ -111,34 +112,93 @@ def scrape_arthouse() -> list[dict]:
                     film["_director"] = detail["director"]
                 if detail.get("country"):
                     film["_production_country"] = detail["country"]
+                if detail.get("cast"):
+                    film["_cast"] = detail["cast"]
             except Exception as e:  # noqa: BLE001
                 logger.debug("Detail fetch failed for '%s': %s", film["title_display"], e)
 
     return films
 
 
+# The page states its facts as "<strong>Label</strong> value" rows.
+_FACT_LABELS = ("Produktion", "Darsteller:innen", "Dauer")
+
+_YEAR = re.compile(r"\b(?:19|20)\d{2}\b")
+
+# "Burt Lancaster, Silvana Mangano, Helmut Berger u.a."
+_CAST_TAIL = re.compile(r"\b(?:u\.?\s?a\.?|und andere)\s*$", re.IGNORECASE)
+
+
+def _fact_rows(soup: BeautifulSoup) -> dict[str, str]:
+    """Read the labelled fact rows of a detail page, keyed by their label.
+
+    Taken from the rows rather than from the flattened page text, where the
+    description that follows runs straight into the cast with nothing in
+    between to cut at.
+    """
+    rows: dict[str, str] = {}
+    for strong in soup.find_all("strong"):
+        label = strong.get_text(" ", strip=True).rstrip(":")
+        if label not in _FACT_LABELS:
+            continue
+        value = " ".join(
+            sibling.get_text(" ", strip=True) if isinstance(sibling, Tag) else str(sibling)
+            for sibling in strong.next_siblings
+        )
+        value = _fix_mojibake(" ".join(value.split()))
+        if value:
+            rows.setdefault(label, value)
+    return rows
+
+
+def _parse_cast(value: str) -> list[str]:
+    """Split a cast row into full names, dropping its "u.a." tail."""
+    names = []
+    for part in value.split(","):
+        name = _CAST_TAIL.sub("", part.strip()).strip(" .;")
+        # A full name, so that a stray fragment cannot be searched for as a person
+        if " " in name and len(name) > 2:
+            names.append(name)
+    return names
+
+
 def _fetch_film_detail(url: str) -> dict:
-    """Fetch production year, director, and country from an arthouse film detail page."""
+    """Fetch production year, country, director and cast from a detail page.
+
+    The cast and the production country carry the identification of a film
+    whose title TMDb cannot be searched for, so a programme banner nobody has
+    added to the scraper yet no longer means the film escapes the language
+    filter entirely.
+    """
     resp = requests.get(url, headers=HEADERS, timeout=15)
     resp.raise_for_status()
     resp.encoding = "utf-8"
-    text = _fix_mojibake(BeautifulSoup(resp.text, "html.parser").get_text(" ", strip=True))
+    soup = BeautifulSoup(resp.text, "html.parser")
+    rows = _fact_rows(soup)
+    text = _fix_mojibake(soup.get_text(" ", strip=True))
 
-    result: dict[str, str | int] = {}
+    result: dict[str, object] = {}
 
     # "Produktion Indonesien 2024" or "Produktion: Frankreich, 2025"
-    prod_match = re.search(r"Produktion\s*:?\s*([^\n|·•]{3,60})", text)
-    if prod_match:
-        prod_text = prod_match.group(1)
-        year_m = re.search(r"\b(20\d{2}|19\d{2})\b", prod_text)
-        if year_m:
-            result["year"] = int(year_m.group(1))
-        country_m = re.match(r"([A-Za-zÄÖÜäöüß/ -]+?)[\s,]+(?:20|19)\d{2}", prod_text)
-        if country_m:
-            result["country"] = country_m.group(1).strip()
+    production = rows.get("Produktion", "")
+    if not production:
+        prod_match = re.search(r"Produktion\s*:?\s*([^\n|·•]{3,60})", text)
+        production = prod_match.group(1) if prod_match else ""
+    if production:
+        year_match = _YEAR.search(production)
+        if year_match:
+            result["year"] = int(year_match.group())
+        country = _YEAR.sub(" ", production).strip(" ,.;-–—")
+        if country:
+            result["country"] = " ".join(country.split())
 
-    # "R: Tumpal Tampubolon." or "Regie: Name"
-    dir_match = re.search(r"\bR(?:egie)?\s*:\s*([^\n|·•.]{3,60})", text)
+    if rows.get("Darsteller:innen"):
+        cast = _parse_cast(rows["Darsteller:innen"])
+        if cast:
+            result["cast"] = cast
+
+    # "R: Tumpal Tampubolon." or "Regie: Name", followed by anything on the page
+    dir_match = re.search(r"\bR(?:egie)?\s*:\s*([^\n|·•.;]{3,60})", text)
     if dir_match:
         result["director"] = dir_match.group(1).strip()
 

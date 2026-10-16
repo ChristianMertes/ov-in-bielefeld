@@ -16,6 +16,7 @@ from tmdb_client import (
     _get_movie_details,
     _tmdb_search_request,
     discover_releases,
+    find_by_credits,
     get_imdb_url,
     get_omdb_url,
     get_tmdb_url,
@@ -564,3 +565,120 @@ def test_discover_releases_survives_failing_detail_lookup(monkeypatch):
     assert candidates[0]["title_original"] == "Coyote vs. Acme"
     assert candidates[0]["imdb_id"] is None
     assert candidates[0]["release_year"] == 2026
+
+
+# ── find_by_credits ───────────────────────────────────────────────────────────
+
+_PERSON_RESULT = {"results": [{"id": 3896, "name": "Luchino Visconti"}]}
+
+_CREDIT_DISCOVER = {
+    "results": [{
+        "id": 11418,
+        "title": "Gewalt und Leidenschaft",
+        "original_title": "Gruppo di famiglia in un interno",
+        "original_language": "it",
+        "release_date": "1974-10-11",
+        "popularity": 7.3,
+        "overview": "Ein alternder Professor ...",
+        "poster_path": "/gruppo.jpg",
+    }]
+}
+
+
+def test_find_by_credits_identifies_a_film_behind_a_banner(monkeypatch):
+    """The case the title search cannot reach: 'Cinema! Italia! Gewalt und Leidenschaft'."""
+    monkeypatch.setattr(settings, "TMDB_API_KEY", "key")
+    with patch("tmdb_client.requests.get") as mock_get:
+        mock_get.side_effect = [
+            _mock_resp(_PERSON_RESULT),      # person search
+            _mock_resp(_CREDIT_DISCOVER),    # discover by credits
+            _mock_resp({"imdb_id": "tt0072420", "runtime": 121,
+                        "title": "Gewalt und Leidenschaft"}),
+        ]
+        film = find_by_credits("Cinema! Italia! Gewalt und Leidenschaft", 1974,
+                               director="Luchino Visconti")
+
+    assert film["tmdb_id"] == 11418
+    assert film["original_language"] == "it"
+    assert film["imdb_id"] == "tt0072420"
+    assert film["title_original"] == "Gruppo di famiglia in un interno"
+
+
+def test_find_by_credits_accepts_an_original_title_match(monkeypatch):
+    monkeypatch.setattr(settings, "TMDB_API_KEY", "key")
+    discover = {"results": [{**_CREDIT_DISCOVER["results"][0], "title": "Ganz anders"}]}
+    with patch("tmdb_client.requests.get") as mock_get:
+        mock_get.side_effect = [_mock_resp(_PERSON_RESULT), _mock_resp(discover), _mock_resp({})]
+        film = find_by_credits("Cinema! Italia! Gruppo di famiglia in un interno", 1974,
+                               cast=["Burt Lancaster"])
+
+    assert film["tmdb_id"] == 11418
+
+
+def test_find_by_credits_rejects_a_candidate_the_title_does_not_confirm(monkeypatch):
+    """Credits plus a year alone return any film by the same people."""
+    monkeypatch.setattr(settings, "TMDB_API_KEY", "key")
+    discover = {"results": [{**_CREDIT_DISCOVER["results"][0],
+                             "title": "Suddenly Princess",
+                             "original_title": "Suddenly Princess"}]}
+    with patch("tmdb_client.requests.get") as mock_get:
+        mock_get.side_effect = [_mock_resp(_PERSON_RESULT), _mock_resp(discover)]
+        assert find_by_credits("NIPPON CINEMA: Perfect Blue", 1997, cast=["Kon Satoshi"]) is None
+
+
+def test_find_by_credits_does_not_match_on_a_foreign_script_title(monkeypatch):
+    """Normalising must not reduce a Cyrillic title to a letter that matches anything."""
+    monkeypatch.setattr(settings, "TMDB_API_KEY", "key")
+    discover = {"results": [{**_CREDIT_DISCOVER["results"][0],
+                             "title": "S Миколай та загублений лист",
+                             "original_title": "Миколай та загублений лист"}]}
+    with patch("tmdb_client.requests.get") as mock_get:
+        mock_get.side_effect = [_mock_resp(_PERSON_RESULT), _mock_resp(discover)]
+        assert find_by_credits("St. Nicholas and the Lost Letter", 2026, cast=["Someone Else"]) is None
+
+
+def test_find_by_credits_searches_a_year_window(monkeypatch):
+    """Page year and TMDb release year differ by up to a year for festival films."""
+    monkeypatch.setattr(settings, "TMDB_API_KEY", "key")
+    with patch("tmdb_client.requests.get") as mock_get:
+        mock_get.side_effect = [_mock_resp(_PERSON_RESULT), _mock_resp({"results": []})]
+        find_by_credits("L’attachement", 2024, cast=["Valeria Bruni Tedeschi"])
+
+    params = mock_get.call_args_list[1].kwargs["params"]
+    assert params["primary_release_date.gte"] == "2023-01-01"
+    assert params["primary_release_date.lte"] == "2025-12-31"
+
+
+def test_find_by_credits_combines_cast_members(monkeypatch):
+    monkeypatch.setattr(settings, "TMDB_API_KEY", "key")
+    with patch("tmdb_client.requests.get") as mock_get:
+        mock_get.side_effect = [
+            _mock_resp({"results": [{"id": 1}]}),
+            _mock_resp({"results": [{"id": 2}]}),
+            _mock_resp({"results": []}),
+        ]
+        find_by_credits("Irgendein Film", 2025, cast=["Eine Person", "Noch Eine", "Dritte"])
+
+    assert mock_get.call_args_list[2].kwargs["params"]["with_cast"] == "1,2"
+
+
+def test_find_by_credits_without_people_asks_nothing(monkeypatch):
+    monkeypatch.setattr(settings, "TMDB_API_KEY", "key")
+    with patch("tmdb_client.requests.get") as mock_get:
+        assert find_by_credits("Irgendein Film", 2025, cast=[]) is None
+    mock_get.assert_not_called()
+
+
+def test_find_by_credits_without_year_asks_nothing(monkeypatch):
+    """A year is what keeps the candidate field small enough to trust."""
+    monkeypatch.setattr(settings, "TMDB_API_KEY", "key")
+    with patch("tmdb_client.requests.get") as mock_get:
+        assert find_by_credits("Irgendein Film", None, cast=["Eine Person"]) is None
+    mock_get.assert_not_called()
+
+
+def test_find_by_credits_survives_an_unknown_person(monkeypatch):
+    monkeypatch.setattr(settings, "TMDB_API_KEY", "key")
+    with patch("tmdb_client.requests.get") as mock_get:
+        mock_get.side_effect = [_mock_resp({"results": []})]
+        assert find_by_credits("Irgendein Film", 2025, cast=["Niemand Bekanntes"]) is None

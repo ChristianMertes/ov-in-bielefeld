@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from scrapers.arthouse import (
+    _fetch_film_detail,
     _fix_mojibake,
     _parse_german_date,
     _strip_series_prefix,
@@ -218,3 +219,61 @@ def test_series_prefix_stripped(raw, expected):
 ])
 def test_titles_without_a_banner_are_untouched(title):
     assert _strip_series_prefix(title) == title
+
+
+# ── _fetch_film_detail ────────────────────────────────────────────────────────
+
+_DETAIL_HTML = """
+<html><body>
+  <div class="facts">
+    <p><strong>Dauer</strong> 117 Minuten</p>
+    <p><strong>FSK</strong> 16</p>
+    <p><strong>Produktion</strong> Italien 1974</p>
+    <p><strong>Darsteller:innen</strong> Burt Lancaster, Silvana Mangano, Helmut Berger u.a.</p>
+  </div>
+  <div class="text">Ein alternder Professor ... R: Luchino Visconti; Mehr anzeigen</div>
+</body></html>
+"""
+
+
+def _detail(html=_DETAIL_HTML):
+    resp = MagicMock()
+    resp.text = html
+    resp.encoding = "utf-8"
+    with patch("scrapers.arthouse.requests.get", return_value=resp):
+        return _fetch_film_detail("https://example.com/filme/x/")
+
+
+def test_detail_reads_production_year():
+    assert _detail()["year"] == 1974
+
+
+def test_detail_reads_production_country_without_the_year():
+    assert _detail()["country"] == "Italien"
+
+
+def test_detail_reads_director():
+    assert _detail()["director"] == "Luchino Visconti"
+
+
+def test_detail_reads_cast():
+    """The cast identifies a film whose title cannot be searched."""
+    assert _detail()["cast"] == ["Burt Lancaster", "Silvana Mangano", "Helmut Berger"]
+
+
+def test_detail_cast_does_not_run_into_the_description():
+    """Flattened page text puts the description right behind the cast row."""
+    html = _DETAIL_HTML.replace(
+        '<div class="text">', '<div class="text">Der neunjährige Nico wird geschickt. ')
+    assert all(len(name) < 40 for name in _detail(html)["cast"])
+
+
+def test_detail_handles_a_coproduction():
+    html = _DETAIL_HTML.replace("Italien 1974", "Israel/Frankreich 2024")
+    detail = _detail(html)
+    assert detail["country"] == "Israel/Frankreich"
+    assert detail["year"] == 2024
+
+
+def test_detail_without_facts_is_empty_not_an_error():
+    assert _detail("<html><body><p>Nichts hier</p></body></html>") == {}
