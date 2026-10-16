@@ -18,7 +18,7 @@ from apscheduler.triggers.cron import CronTrigger
 import cache
 from log_setup import setup_logging
 from orchestrator import run_scrape
-from telegram_bot import notify_all_pending, notify_new_film
+from telegram_bot import notify_all_pending, notify_dropped_films, notify_new_film
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +30,9 @@ def scrape_and_notify() -> None:
         result = run_scrape(notify_callback=notify_new_film)
         if result:
             logger.info("Scrape done: %d films, %d new", result["total_films"], result["new_films"])
+            # Films dropped on country evidence alone leave no trace anywhere a
+            # person would look, so they go straight to the operator.
+            notify_dropped_films(result["dropped_unidentified"])
         # Also catch any missed notifications
         notify_all_pending()
     except Exception as e:

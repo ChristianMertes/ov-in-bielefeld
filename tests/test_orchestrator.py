@@ -604,3 +604,144 @@ def test_run_scrape_keeps_unmatched_film_it_cannot_judge(db):
     _run_scrape_rejecting(_mock_scraper_film("Unknown Film"), None)
 
     assert db.execute("SELECT COUNT(*) FROM films").fetchone()[0] == 1
+
+
+# ── Identification by credits, and what happens without one ───────────────────
+
+def _unsearchable(title="Cinema! Italia! GIOIA MIA", **kwargs):
+    """A film whose title TMDb cannot be searched for, as arthouse delivers it."""
+    defaults = {
+        "title_raw": title,
+        "_arthouse_year": 2025,
+        "_cast": ["Valeria Bruni Tedeschi", "Aurora Quattrocchi"],
+        "_production_country": "Italien",
+    }
+    return _film_data(title, **{**defaults, **kwargs})
+
+
+def test_enrich_falls_back_to_credits_when_the_title_fails():
+    italian = {"original_language": "it", "tmdb_id": 11418}
+    with (
+        patch("orchestrator.lookup_film", return_value=None),
+        patch("orchestrator.find_by_credits", return_value=italian) as mock_credits,
+    ):
+        result = _enrich_with_tmdb(_unsearchable())
+
+    assert mock_credits.called
+    assert result is None  # identified as Italian, so the language filter drops it
+
+
+def test_enrich_keeps_film_credits_identify_as_english():
+    english = {"original_language": "en", "tmdb_id": 500}
+    with (
+        patch("orchestrator.lookup_film", return_value=None),
+        patch("orchestrator.find_by_credits", return_value=english),
+    ):
+        result = _enrich_with_tmdb(_unsearchable())
+
+    assert result is not None
+    assert result["_tmdb_data"] == english
+
+
+def test_enrich_passes_page_credits_to_the_credit_search():
+    with (
+        patch("orchestrator.lookup_film", return_value=None),
+        patch("orchestrator.find_by_credits", return_value=None) as mock_credits,
+    ):
+        _enrich_with_tmdb(_unsearchable(_director="Luchino Visconti"))
+
+    kwargs = mock_credits.call_args.kwargs
+    assert kwargs["cast"] == ["Valeria Bruni Tedeschi", "Aurora Quattrocchi"]
+    assert kwargs["director"] == "Luchino Visconti"
+
+
+def test_enrich_skips_the_credit_search_when_the_title_matched():
+    english = {"original_language": "en", "tmdb_id": 1}
+    with (
+        patch("orchestrator.lookup_film", return_value=english),
+        patch("orchestrator.find_by_credits") as mock_credits,
+    ):
+        _enrich_with_tmdb(_unsearchable())
+
+    mock_credits.assert_not_called()
+
+
+def test_enrich_drops_unidentified_film_from_a_foreign_production():
+    """Nothing identified it, and Italy does not make English or French originals."""
+    with (
+        patch("orchestrator.lookup_film", return_value=None),
+        patch("orchestrator.find_by_credits", return_value=None),
+    ):
+        film = _unsearchable()
+        result = _enrich_with_tmdb(film)
+
+    assert result is None
+    assert film["_drop_reason"] == "production_country"
+
+
+def test_enrich_keeps_unidentified_film_from_a_french_production():
+    with (
+        patch("orchestrator.lookup_film", return_value=None),
+        patch("orchestrator.find_by_credits", return_value=None),
+    ):
+        film = _unsearchable(_production_country="Frankreich")
+        result = _enrich_with_tmdb(film)
+
+    assert result is not None
+    assert film["_unidentified"] is True
+
+
+def test_enrich_keeps_unidentified_film_without_a_production_country():
+    """CinemaxX delivers no detail page, so there is no evidence to drop on."""
+    with (
+        patch("orchestrator.lookup_film", return_value=None),
+        patch("orchestrator.find_by_credits", return_value=None),
+    ):
+        film = _film_data("League of Legends Worlds 26")
+        result = _enrich_with_tmdb(film)
+
+    assert result is not None
+    assert film.get("_drop_reason") is None
+
+
+def test_enrich_never_sends_a_sneak_to_the_credit_search():
+    with (
+        patch("orchestrator.lookup_film") as mock_lookup,
+        patch("orchestrator.find_by_credits") as mock_credits,
+    ):
+        _enrich_with_tmdb(_film_data("SNEAK PREVIEW"))
+
+    mock_lookup.assert_not_called()
+    mock_credits.assert_not_called()
+
+
+def test_run_scrape_reports_dropped_films(patched_run):
+    """Dropping a film is invisible on the site, so the run has to report it."""
+    film = _unsearchable()
+    with (
+        patch("orchestrator.scrape_arthouse", return_value=[film]),
+        patch("orchestrator.scrape_cinemaxx", return_value=[]),
+        patch("orchestrator.lookup_film", return_value=None),
+        patch("orchestrator.find_by_credits", return_value=None),
+        patch("orchestrator.fetch_imdb_ratings", return_value={}),
+        patch("orchestrator.fetch_rt_scores", return_value={}),
+    ):
+        result = run_scrape()
+
+    assert result["dropped_unidentified"] == [
+        {"title": "Cinema! Italia! GIOIA MIA", "country": "Italien"}
+    ]
+
+
+def test_run_scrape_reports_nothing_when_every_film_is_identified(patched_run):
+    tmdb = {"original_language": "en", "tmdb_id": 7}
+    with (
+        patch("orchestrator.scrape_arthouse", return_value=[_mock_scraper_film()]),
+        patch("orchestrator.scrape_cinemaxx", return_value=[]),
+        patch("orchestrator.lookup_film", return_value=tmdb),
+        patch("orchestrator.fetch_imdb_ratings", return_value={}),
+        patch("orchestrator.fetch_rt_scores", return_value={}),
+    ):
+        result = run_scrape()
+
+    assert result["dropped_unidentified"] == []

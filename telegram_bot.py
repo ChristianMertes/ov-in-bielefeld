@@ -23,19 +23,22 @@ logger = logging.getLogger(__name__)
 
 BOT_TOKEN = settings.TELEGRAM_BOT_TOKEN
 CHAT_ID = settings.TELEGRAM_CHAT_ID
+ADMIN_BOT_TOKEN = settings.TELEGRAM_ADMIN_BOT_TOKEN
+ADMIN_CHAT_ID = settings.TELEGRAM_ADMIN_CHAT_ID
 WEBAPP_URL = settings.WEBAPP_URL
 
+# Films already reported to the operator. Every scrape drops the same film
+# again, and one message per film is the point of the alert. Process-local:
+# the scheduler is long-lived, and a restart repeating one message is harmless.
+_reported_drops: set[str] = set()
 
-def send_message(text: str, parse_mode: str = "HTML",
-                 disable_web_preview: bool = True) -> bool:
-    """Send a message to the configured Telegram chat."""
-    if not BOT_TOKEN or not CHAT_ID:
-        logger.warning("Telegram not configured (missing BOT_TOKEN or CHAT_ID)")
-        return False
 
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+def _post_message(token: str, chat_id: str, text: str, parse_mode: str = "HTML",
+                  disable_web_preview: bool = True) -> bool:
+    """Post one message to a Telegram chat."""
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
     payload = {
-        "chat_id": CHAT_ID,
+        "chat_id": chat_id,
         "text": text,
         "parse_mode": parse_mode,
         "disable_web_page_preview": disable_web_preview,
@@ -48,6 +51,52 @@ def send_message(text: str, parse_mode: str = "HTML",
     except requests.RequestException as e:
         logger.error("Telegram send failed: %s", e)
         return False
+
+
+def send_message(text: str, parse_mode: str = "HTML",
+                 disable_web_preview: bool = True) -> bool:
+    """Send a message to the configured Telegram chat."""
+    if not BOT_TOKEN or not CHAT_ID:
+        logger.warning("Telegram not configured (missing BOT_TOKEN or CHAT_ID)")
+        return False
+    return _post_message(BOT_TOKEN, CHAT_ID, text, parse_mode, disable_web_preview)
+
+
+def send_admin_message(text: str) -> bool:
+    """Send a message to whoever runs this, never to the public chat."""
+    if not ADMIN_BOT_TOKEN or not ADMIN_CHAT_ID:
+        logger.info("Admin Telegram not configured; alert stays in the log:\n%s", text)
+        return False
+    return _post_message(ADMIN_BOT_TOKEN, ADMIN_CHAT_ID, text)
+
+
+def notify_dropped_films(dropped: list[dict]) -> None:
+    """Report films that were dropped without anything identifying them.
+
+    These are invisible twice over: not on the site, and nowhere a visitor
+    could notice them missing. The only evidence against them was their
+    production country, so a wrong one has to be easy to spot.
+    """
+    pending = [film for film in dropped if film.get("title") not in _reported_drops]
+    if not pending:
+        return
+
+    lines = [
+        "🔎 <b>Filme ohne Zuordnung verworfen</b>",
+        "",
+        "Zu diesen Filmen hat TMDb nichts geliefert – weder über den Titel noch "
+        "über die Credits. Verworfen wurden sie allein, weil ihr Produktionsland "
+        "weder englisch- noch französischsprachig ist:",
+        "",
+    ]
+    for film in pending:
+        country = film.get("country") or "Land unbekannt"
+        lines.append(f"• <b>{_escape_html(film['title'])}</b> – {_escape_html(country)}")
+    lines.append("")
+    lines.append("War einer davon doch OV? Dann stimmt das Land nicht, oder TMDb kennt den Film.")
+
+    if send_admin_message("\n".join(lines)):
+        _reported_drops.update(film["title"] for film in pending)
 
 
 def notify_new_film(film_id: int, film_data: dict | None = None) -> None:

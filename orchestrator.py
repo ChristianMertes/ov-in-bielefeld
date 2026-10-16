@@ -29,12 +29,13 @@ from database import (
     upsert_film,
     upsert_showtime,
 )
+from production_country import maybe_en_or_fr
 from ratings_client import fetch_imdb_ratings, fetch_rt_scores
 from scrapers.arthouse import scrape_arthouse
 from scrapers.cinemaxx import scrape_cinemaxx
 from sneak import DEFAULT_SNEAK_LANGUAGE, is_sneak_title, official_release_date, sneak_language
 from timeutil import now_local
-from tmdb_client import discover_releases, is_relevant_language, lookup_film
+from tmdb_client import discover_releases, find_by_credits, is_relevant_language, lookup_film
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,10 @@ _MIN_TITLE_PART_LEN = 3
 # Two or more exclamation-terminated words are a banner, never a title, which
 # is what keeps "Mamma Mia! Here We Go Again" whole.
 _SERIES_BANNER = re.compile(r"^(?:\S+!\s+){2,}(?=\S)")
+
+# Marks a film dropped on nothing but its production country, which is the one
+# drop the site's visitors cannot see for themselves.
+_DROPPED_BY_COUNTRY = "production_country"
 
 # How many release Thursdays to fetch a candidate line-up for in advance, on
 # top of the ones upcoming sneaks already point at. Two covers the week a
@@ -120,6 +125,7 @@ def run_scrape(notify_callback: Callable[[int, dict], None] | None = None) -> di
     # main write transaction, to avoid nested write locks on the same DB.
     enriched_films = []
     rejected_titles: list[str] = []
+    dropped_unidentified: list[dict] = []
     for film_data in all_films:
         try:
             enriched = _enrich_with_tmdb(film_data)
@@ -127,6 +133,11 @@ def run_scrape(notify_callback: Callable[[int, dict], None] | None = None) -> di
                 enriched_films.append(enriched)
             else:
                 rejected_titles.extend(_stored_under(film_data))
+                if film_data.get("_drop_reason") == _DROPPED_BY_COUNTRY:
+                    dropped_unidentified.append({
+                        "title": film_data["title_display"],
+                        "country": film_data.get("_production_country"),
+                    })
         except Exception as e:  # noqa: BLE001
             title = film_data.get("title_display", "?")
             logger.error("TMDb enrichment failed for '%s': %s", title, e)
@@ -199,6 +210,9 @@ def run_scrape(notify_callback: Callable[[int, dict], None] | None = None) -> di
         "total_films": len(enriched_films),
         "new_films": len(new_films),
         "new_film_titles": [f["title_display"] for _, f in new_films],
+        # Dropping a film leaves no trace on the site, so the caller gets told
+        # and can pass it on to whoever runs this.
+        "dropped_unidentified": dropped_unidentified,
     }
 
 
@@ -315,11 +329,35 @@ def _enrich_with_tmdb(film_data: dict) -> dict | None:
             if retry:  # May be None if correct film not on TMDb – keep original match
                 tmdb_data = retry
 
+    # Nothing found by title: ask who made the film. A banner glued to the
+    # front of the title, or a German title TMDb files differently, both end up
+    # here, and the credits identify the film where the title cannot.
+    if not tmdb_data:
+        tmdb_data = find_by_credits(
+            film_data.get("title_raw") or title,
+            arthouse_year or year,
+            cast=film_data.get("_cast"),
+            director=film_data.get("_director"),
+        )
+
     if tmdb_data:
         orig_lang = tmdb_data.get("original_language", "")
         if orig_lang and not is_relevant_language(orig_lang):
             logger.debug("Skipping '%s': original language '%s' not EN/FR", title, orig_lang)
+            film_data["_drop_reason"] = "language"
             return None
+    else:
+        country = film_data.get("_production_country")
+        if maybe_en_or_fr(country) is False:
+            # Unidentified and from a country that makes neither English nor
+            # French originals. That is thin evidence, so it is logged and
+            # reported rather than applied quietly.
+            logger.warning(
+                "Dropping '%s': nothing identified it and it is a %s production", title, country
+            )
+            film_data["_drop_reason"] = _DROPPED_BY_COUNTRY
+            return None
+        film_data["_unidentified"] = True
 
     film_data["_tmdb_data"] = tmdb_data
     return film_data

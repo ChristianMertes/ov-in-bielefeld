@@ -12,7 +12,9 @@ from telegram_bot import (
     _process_update,
     handle_updates,
     notify_all_pending,
+    notify_dropped_films,
     notify_new_film,
+    send_admin_message,
     send_message,
 )
 
@@ -414,3 +416,87 @@ def test_notify_sneak_links_to_sneak_page(db, monkeypatch):
 
     assert "/sneak" in sent[0]
     assert f"/film/{film_id}" not in sent[0]
+
+
+# ── Admin alerts ──────────────────────────────────────────────────────────────
+
+@pytest.fixture
+def admin_configured(monkeypatch):
+    monkeypatch.setattr(telegram_bot, "ADMIN_BOT_TOKEN", "admin-token")
+    monkeypatch.setattr(telegram_bot, "ADMIN_CHAT_ID", "4242")
+    telegram_bot._reported_drops.clear()
+    yield
+    telegram_bot._reported_drops.clear()
+
+
+def test_send_admin_message_uses_the_admin_bot(admin_configured):
+    with patch("telegram_bot.requests.post") as mock_post:
+        mock_post.return_value = MagicMock(ok=True, raise_for_status=MagicMock())
+        assert send_admin_message("Hallo") is True
+
+    assert "admin-token" in mock_post.call_args[0][0]
+    assert mock_post.call_args.kwargs["json"]["chat_id"] == "4242"
+
+
+def test_send_admin_message_does_not_reach_the_public_chat(admin_configured, monkeypatch):
+    monkeypatch.setattr(telegram_bot, "CHAT_ID", "-500123")
+    with patch("telegram_bot.requests.post") as mock_post:
+        mock_post.return_value = MagicMock(ok=True, raise_for_status=MagicMock())
+        send_admin_message("Nur für mich")
+
+    assert mock_post.call_args.kwargs["json"]["chat_id"] != "-500123"
+
+
+def test_send_admin_message_without_configuration_sends_nothing(monkeypatch):
+    monkeypatch.setattr(telegram_bot, "ADMIN_CHAT_ID", None)
+    with patch("telegram_bot.requests.post") as mock_post:
+        assert send_admin_message("Hallo") is False
+    mock_post.assert_not_called()
+
+
+def test_notify_dropped_films_names_film_and_country(admin_configured):
+    sent = []
+    with patch.object(telegram_bot, "send_admin_message", lambda t: sent.append(t) or True):
+        notify_dropped_films([{"title": "Cinema! Italia! GIOIA MIA", "country": "Italien"}])
+
+    assert "GIOIA MIA" in sent[0]
+    assert "Italien" in sent[0]
+
+
+def test_notify_dropped_films_reports_each_film_once(admin_configured):
+    """Every scrape drops the same film again; the operator hears about it once."""
+    dropped = [{"title": "Cinema! Italia! GIOIA MIA", "country": "Italien"}]
+    sent = []
+    with patch.object(telegram_bot, "send_admin_message", lambda t: sent.append(t) or True):
+        notify_dropped_films(dropped)
+        notify_dropped_films(dropped)
+
+    assert len(sent) == 1
+
+
+def test_notify_dropped_films_reports_a_newly_dropped_film(admin_configured):
+    sent = []
+    with patch.object(telegram_bot, "send_admin_message", lambda t: sent.append(t) or True):
+        notify_dropped_films([{"title": "GIOIA MIA", "country": "Italien"}])
+        notify_dropped_films([{"title": "GIOIA MIA", "country": "Italien"},
+                              {"title": "TRE CIOTOLE", "country": "Italien"}])
+
+    assert len(sent) == 2
+    assert "TRE CIOTOLE" in sent[1]
+    assert "GIOIA MIA" not in sent[1]
+
+
+def test_notify_dropped_films_retries_after_a_failed_send(admin_configured):
+    """A message Telegram refused must not count as delivered."""
+    dropped = [{"title": "GIOIA MIA", "country": "Italien"}]
+    with patch.object(telegram_bot, "send_admin_message", return_value=False) as mock_send:
+        notify_dropped_films(dropped)
+        notify_dropped_films(dropped)
+
+    assert mock_send.call_count == 2
+
+
+def test_notify_dropped_films_with_nothing_dropped_stays_quiet(admin_configured):
+    with patch.object(telegram_bot, "send_admin_message") as mock_send:
+        notify_dropped_films([])
+    mock_send.assert_not_called()

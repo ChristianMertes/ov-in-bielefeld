@@ -17,8 +17,10 @@ Deployed to https://ov-in-bielefeld.de/.
 - Scrapes multiple times daily, more frequently on Wednesdays (when the new Kinowoche programme starts)
 - TMDb integration: original title, poster, IMDb/RT ratings, runtime
 - Language filtering via TMDb: only English and French films, no German, Japanese, etc. Series banners (`Cinema! Italia!`, `NIPPON CINEMA:`) are stripped from scraped titles first – an unsearchable title gets no TMDb match, and without a match there is nothing to filter on
+- Films the title search misses are identified by their credits instead: cast and director from the arthouse detail page plus the production year, confirmed by the film's German or original title appearing in the scraped one
+- Still unidentified, and from a country that makes neither English nor French originals (`Produktion Italien 1974`)? Then the film is dropped and reported via the admin bot. An unknown country name is not evidence, so those films stay
 - Arthouse detail pages fetched for better year disambiguation on TMDb
-- Telegram bot: notification for new films + `/programm` command
+- Telegram bot: notification for new films + `/programm` command; a second, private bot reports films that were dropped without an identification, since those are invisible on the site by definition
 - Web UI with cinema filter and sorting by date, title, rating, or popularity
 - Sneak preview page (`/sneak`): sneaks are never looked up on TMDb (their titles are placeholders); instead the page lists every film opening in German cinemas on the release Thursday the sneak points at, minus re-releases (an earlier German cinema date, or a film too old for this to be its first release)
 - In-process Brotli page cache, invalidated after each scrape and at midnight (date-relative labels)
@@ -122,6 +124,7 @@ ov-in-bielefeld/
 ├── telegram_bot.py     # Telegram notifications + /programm command
 ├── database.py         # SQLite layer (films, showtimes, tmdb_cache, sneak_candidates)
 ├── sneak.py            # Sneak preview detection + screening → release-Thursday mapping
+├── production_country.py # Language hint from a programme page's "Produktion <Land>" line
 ├── tmdb_client.py      # TMDb API client + IMDb/OMDb URL helpers
 ├── ratings_client.py   # IMDb rating + Rotten Tomatoes score fetching
 ├── cache.py            # In-process Brotli page cache with sentinel-file invalidation
@@ -161,6 +164,8 @@ ov-in-bielefeld/
 |`OMDB_API_KEY`       |optional |OMDb API key for Rotten Tomatoes scores (free, 1000 req/day)   |
 |`TELEGRAM_BOT_TOKEN` |optional |Bot token from @BotFather                                      |
 |`TELEGRAM_CHAT_ID`   |optional |Your chat ID (use @userinfobot to find it)                     |
+|`TELEGRAM_ADMIN_BOT_TOKEN` |optional |Second bot for private alerts (default: the main bot)    |
+|`TELEGRAM_ADMIN_CHAT_ID`   |optional |Private chat for alerts (unset: alerts only go to the log) |
 |`WEBAPP_URL`         |optional |Public URL for Telegram links (default: http://localhost:8000) |
 |`KINO_DB_PATH`       |optional |Path to SQLite database (default: kino_ov.db)                  |
 |`KINO_LOG_DIR`       |optional |Log directory (default: logs/, in Docker: /app/logs)           |
