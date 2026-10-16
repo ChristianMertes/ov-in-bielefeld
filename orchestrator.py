@@ -35,7 +35,13 @@ from scrapers.arthouse import scrape_arthouse
 from scrapers.cinemaxx import scrape_cinemaxx
 from sneak import DEFAULT_SNEAK_LANGUAGE, is_sneak_title, official_release_date, sneak_language
 from timeutil import now_local
-from tmdb_client import discover_releases, find_by_credits, is_relevant_language, lookup_film
+from tmdb_client import (
+    contradicts_production,
+    discover_releases,
+    find_by_credits,
+    is_relevant_language,
+    lookup_film,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -328,6 +334,18 @@ def _enrich_with_tmdb(film_data: dict) -> dict | None:
             retry = _try_lookup(title, arthouse_year)
             if retry:  # May be None if correct film not on TMDb – keep original match
                 tmdb_data = retry
+
+    # A title search answers with its best guess, never with a certainty. Where
+    # the page states a year and a production country, hold the guess against
+    # both: a match that disagrees with the cinema on both counts is a
+    # different film, and its language would be the wrong one to filter on.
+    if tmdb_data and contradicts_production(
+        tmdb_data["tmdb_id"], arthouse_year or year, film_data.get("_production_country")
+    ):
+        logger.warning(
+            "Dropping the TMDb match for '%s': it contradicts the programme page", title
+        )
+        tmdb_data = None
 
     # Nothing found by title: ask who made the film. A banner glued to the
     # front of the title, or a German title TMDb files differently, both end up

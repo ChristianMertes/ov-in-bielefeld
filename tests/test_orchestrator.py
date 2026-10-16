@@ -659,6 +659,7 @@ def test_enrich_skips_the_credit_search_when_the_title_matched():
     english = {"original_language": "en", "tmdb_id": 1}
     with (
         patch("orchestrator.lookup_film", return_value=english),
+        patch("orchestrator.contradicts_production", return_value=False),
         patch("orchestrator.find_by_credits") as mock_credits,
     ):
         _enrich_with_tmdb(_unsearchable())
@@ -745,3 +746,59 @@ def test_run_scrape_reports_nothing_when_every_film_is_identified(patched_run):
         result = run_scrape()
 
     assert result["dropped_unidentified"] == []
+
+
+# ── Holding a title match against the programme page ──────────────────────────
+
+def test_enrich_drops_a_match_the_page_contradicts():
+    """'Eid': page says Israel 2024, the match is an Icelandic film from 2016."""
+    wrong = {"original_language": "is", "tmdb_id": 4242}
+    with (
+        patch("orchestrator.lookup_film", return_value=wrong),
+        patch("orchestrator.contradicts_production", return_value=True),
+        patch("orchestrator.find_by_credits", return_value=None) as mock_credits,
+    ):
+        film = _unsearchable("Eid", _production_country="Israel", _arthouse_year=2024)
+        result = _enrich_with_tmdb(film)
+
+    assert mock_credits.called  # the credits get a chance before anything is decided
+    assert result is None       # nothing identified it, and Israel is the evidence
+    assert film["_drop_reason"] == "production_country"
+
+
+def test_enrich_prefers_the_credit_match_over_a_contradicted_one():
+    contradicted = {"original_language": "is", "tmdb_id": 4242}
+    by_credits = {"original_language": "he", "tmdb_id": 777}
+    with (
+        patch("orchestrator.lookup_film", return_value=contradicted),
+        patch("orchestrator.contradicts_production", return_value=True),
+        patch("orchestrator.find_by_credits", return_value=by_credits),
+    ):
+        result = _enrich_with_tmdb(_unsearchable("Eid", _production_country="Israel"))
+
+    assert result is None  # Hebrew, so the language filter drops it – correctly this time
+
+
+def test_enrich_keeps_a_match_the_page_agrees_with():
+    english = {"original_language": "en", "tmdb_id": 1}
+    with (
+        patch("orchestrator.lookup_film", return_value=english),
+        patch("orchestrator.contradicts_production", return_value=False),
+        patch("orchestrator.find_by_credits") as mock_credits,
+    ):
+        result = _enrich_with_tmdb(_unsearchable("Pressure", _production_country="Großbritannien"))
+
+    assert result["_tmdb_data"] == english
+    mock_credits.assert_not_called()
+
+
+def test_enrich_checks_the_match_against_the_page_year():
+    with (
+        patch("orchestrator.lookup_film", return_value={"original_language": "en", "tmdb_id": 9}),
+        patch("orchestrator.contradicts_production", return_value=False) as mock_check,
+        patch("orchestrator.find_by_credits", return_value=None),
+    ):
+        _enrich_with_tmdb(_unsearchable("Irgendwas", _arthouse_year=1974,
+                                       _production_country="Italien"))
+
+    assert mock_check.call_args.args == (9, 1974, "Italien")

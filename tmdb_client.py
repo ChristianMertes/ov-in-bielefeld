@@ -13,6 +13,7 @@ import requests
 
 import settings
 from database import get_db, get_tmdb_cache, set_tmdb_cache
+from production_country import iso_codes
 
 logger = logging.getLogger(__name__)
 
@@ -442,6 +443,91 @@ def _title_confirms(movie: dict, scraped_title: str) -> bool:
         if len(needle) >= _MIN_TITLE_MATCH and f" {needle} " in haystack:
             return True
     return False
+
+
+# Release-date types TMDb uses for a cinema run: 1 premiere (festivals),
+# 2 limited, 3 theatrical. A programme page's production year can legitimately
+# be any of them, from the festival premiere to the German start.
+_CINEMA_RELEASE_TYPES = {1, 2, 3}
+
+# How far the stated production year may sit from every date TMDb knows before
+# it counts as contradicting the match. Pages are off by a year either way.
+_PRODUCTION_YEAR_SLACK = 1
+
+
+def contradicts_production(tmdb_id: int, page_year: int | None,
+                           page_country: str | None) -> bool:
+    """True if TMDb's record for this film disagrees with what the page states.
+
+    A title search returns its best guess, not a certainty, and a wrong guess
+    carries a wrong original language into the filter – an Israeli film matched
+    to an Icelandic one was listed here as English. The page states a
+    production year and a production country, and either disagreeing is enough
+    to stop trusting the match; what the film actually is gets decided from its
+    credits afterwards.
+
+    Each side is generous before it objects, because each is wrong on its own
+    for about one film in thirty. A year counts as agreeing if it comes within
+    a year of any date TMDb has the film reaching a cinema, festival premieres
+    included, which covers a page stating the production year where TMDb
+    carries the German release. A country counts as agreeing unless the two
+    sets of countries are entirely disjoint. Where a side has no data at all,
+    it raises no objection.
+    """
+    api_key = settings.TMDB_API_KEY
+    if not api_key:
+        return False
+
+    expected_countries = iso_codes(page_country)
+    if not page_year and not expected_countries:
+        return False  # Nothing to hold the match against
+
+    details = _get_movie_details(tmdb_id, api_key, language="de-DE",
+                                append="release_dates")
+    if not details:
+        return False
+
+    tmdb_countries = {
+        country["iso_3166_1"]
+        for country in details.get("production_countries", [])
+        if country.get("iso_3166_1")
+    } | set(details.get("origin_country") or [])
+    cinema_years = _cinema_release_years(details)
+
+    country_objects = bool(expected_countries and tmdb_countries
+                           and not expected_countries & tmdb_countries)
+    year_objects = bool(page_year and cinema_years and not any(
+        abs(page_year - year) <= _PRODUCTION_YEAR_SLACK for year in cinema_years
+    ))
+    if not (country_objects or year_objects):
+        return False
+
+    logger.warning(
+        "TMDb %s contradicts the page (%s): page %s %s vs TMDb %s %s",
+        tmdb_id,
+        " and ".join(
+            part for part, objects in (("country", country_objects), ("year", year_objects))
+            if objects
+        ),
+        sorted(expected_countries), page_year,
+        sorted(tmdb_countries), sorted(cinema_years),
+    )
+    return True
+
+
+def _cinema_release_years(details: dict) -> set[int]:
+    """Every year TMDb has this film reaching a cinema, premieres included."""
+    years = set()
+    primary = _extract_year(details.get("release_date"))
+    if primary:
+        years.add(primary)
+    for country in details.get("release_dates", {}).get("results", []):
+        for entry in country.get("release_dates", []):
+            if entry.get("type") in _CINEMA_RELEASE_TYPES:
+                year = _extract_year(entry.get("release_date"))
+                if year:
+                    years.add(year)
+    return years
 
 
 def is_relevant_language(language_code: str) -> bool:

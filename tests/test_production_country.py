@@ -1,7 +1,7 @@
 """Tests for the production-country language hint."""
 import pytest
 
-from production_country import maybe_en_or_fr, named_countries
+from production_country import COUNTRIES, iso_codes, maybe_en_or_fr, named_countries
 
 # ── named_countries ───────────────────────────────────────────────────────────
 
@@ -62,3 +62,25 @@ def test_unknown_country_name_gives_no_verdict():
 
 def test_unknown_partner_in_a_coproduction_gives_no_verdict():
     assert maybe_en_or_fr("Italien/Sansibar 2026") is None
+
+
+# ── iso_codes ─────────────────────────────────────────────────────────────────
+
+def test_iso_codes_single_country():
+    assert iso_codes("Italien 1974") == {"IT"}
+
+
+def test_iso_codes_coproduction():
+    assert iso_codes("Israel/Frankreich 2024") == {"IL", "FR"}
+
+
+def test_iso_codes_skips_unknown_names():
+    assert iso_codes("Italien/Sansibar 2026") == {"IT"}
+
+
+def test_iso_codes_without_a_country():
+    assert iso_codes("2026") == set()
+
+
+def test_every_country_has_a_two_letter_code():
+    assert all(len(iso) == 2 and iso.isupper() for iso, _ in COUNTRIES.values())

@@ -15,6 +15,7 @@ from tmdb_client import (
     _extract_year,
     _get_movie_details,
     _tmdb_search_request,
+    contradicts_production,
     discover_releases,
     find_by_credits,
     get_imdb_url,
@@ -682,3 +683,99 @@ def test_find_by_credits_survives_an_unknown_person(monkeypatch):
     with patch("tmdb_client.requests.get") as mock_get:
         mock_get.side_effect = [_mock_resp({"results": []})]
         assert find_by_credits("Irgendein Film", 2025, cast=["Niemand Bekanntes"]) is None
+
+
+# ── contradicts_production ────────────────────────────────────────────────────
+
+def _detail(primary, countries, cinema_dates=()):
+    return {
+        "release_date": primary,
+        "production_countries": [{"iso_3166_1": c} for c in countries],
+        "release_dates": {"results": [
+            {"iso_3166_1": iso,
+             "release_dates": [{"release_date": f"{d}T00:00:00.000Z", "type": t}]}
+            for iso, d, t in cinema_dates
+        ]},
+    }
+
+
+def _contradicts(detail, year, country, monkeypatch):
+    monkeypatch.setattr(settings, "TMDB_API_KEY", "key")
+    with patch("tmdb_client.requests.get", return_value=_mock_resp(detail)):
+        return contradicts_production(1, year, country)
+
+
+def test_matching_year_and_country_is_no_objection(monkeypatch):
+    detail = _detail("2025-10-09", ["IT"])
+    assert _contradicts(detail, 2025, "Italien", monkeypatch) is False
+
+
+def test_wrong_film_contradicts_on_both_counts(monkeypatch):
+    """'Eid': the page says Israel 2024, the match is an Icelandic film from 2016."""
+    detail = _detail("2016-09-01", ["IS", "DE", "GB"])
+    assert _contradicts(detail, 2024, "Israel", monkeypatch) is True
+
+
+def test_festival_year_counts_as_the_production_year(monkeypatch):
+    """The page states the production year, TMDb the German release a year later."""
+    detail = _detail("2025-04-01", ["FR"], [("FR", "2024-09-05", 1)])
+    assert _contradicts(detail, 2024, "Frankreich", monkeypatch) is False
+
+
+def test_german_release_year_counts_too(monkeypatch):
+    detail = _detail("2024-05-01", ["FR"], [("DE", "2026-01-15", 3)])
+    assert _contradicts(detail, 2026, "Frankreich", monkeypatch) is False
+
+
+def test_year_off_by_one_is_tolerated(monkeypatch):
+    """'Krashanka 2.0': page 2025, TMDb 2026, and it is the right film."""
+    detail = _detail("2026-03-01", ["UA"])
+    assert _contradicts(detail, 2025, "Ukraine", monkeypatch) is False
+
+
+def test_a_contradicting_country_is_enough_to_object(monkeypatch):
+    """'Eid': the page says Israel, the year agrees, and the match is still wrong."""
+    detail = _detail("2024-06-11", ["US"])
+    assert _contradicts(detail, 2024, "Israel", monkeypatch) is True
+
+
+def test_a_contradicting_year_is_enough_to_object(monkeypatch):
+    detail = _detail("2019-01-01", ["IT"])
+    assert _contradicts(detail, 2025, "Italien", monkeypatch) is True
+
+
+def test_no_page_country_leaves_the_year_to_decide(monkeypatch):
+    detail = _detail("2025-10-09", ["IT"])
+    assert _contradicts(detail, 2025, None, monkeypatch) is False
+
+
+def test_no_page_year_leaves_the_country_to_decide(monkeypatch):
+    detail = _detail("2016-09-01", ["IS"])
+    assert _contradicts(detail, None, "Israel", monkeypatch) is True
+
+
+def test_an_unknown_page_country_raises_no_objection_of_its_own(monkeypatch):
+    """A country name nobody mapped is not evidence; the year still counts."""
+    detail = _detail("2024-09-01", ["IS"])
+    assert _contradicts(detail, 2024, "Sansibar", monkeypatch) is False
+
+
+def test_no_page_facts_at_all_means_no_objection(monkeypatch):
+    detail = _detail("2016-09-01", ["IS"])
+    assert _contradicts(detail, None, None, monkeypatch) is False
+
+
+def test_film_without_countries_on_tmdb_raises_no_country_objection(monkeypatch):
+    detail = _detail("2024-09-01", [])
+    assert _contradicts(detail, 2024, "Israel", monkeypatch) is False
+
+
+def test_origin_country_counts_as_a_production_country(monkeypatch):
+    detail = {**_detail("2025-10-09", []), "origin_country": ["IT"]}
+    assert _contradicts(detail, 2025, "Italien", monkeypatch) is False
+
+
+def test_unreachable_tmdb_means_no_objection(monkeypatch):
+    monkeypatch.setattr(settings, "TMDB_API_KEY", "key")
+    with patch("tmdb_client.requests.get", side_effect=requests.ConnectionError("boom")):
+        assert contradicts_production(1, 2024, "Israel") is False

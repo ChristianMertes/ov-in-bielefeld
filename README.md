@@ -18,6 +18,7 @@ Deployed to https://ov-in-bielefeld.de/.
 - TMDb integration: original title, poster, IMDb/RT ratings, runtime
 - Language filtering via TMDb: only English and French films, no German, Japanese, etc. Series banners (`Cinema! Italia!`, `NIPPON CINEMA:`) are stripped from scraped titles first – an unsearchable title gets no TMDb match, and without a match there is nothing to filter on
 - Films the title search misses are identified by their credits instead: cast and director from the arthouse detail page plus the production year, confirmed by the film's German or original title appearing in the scraped one
+- Every title match is held against the detail page: a match whose production countries are disjoint from the ones the cinema states, or whose cinema years (premiere, release, German release) are nowhere near the stated production year, is dropped and the credits decide instead. An Israeli film matched to a US one was listed here as English that way
 - Still unidentified, and from a country that makes neither English nor French originals (`Produktion Italien 1974`)? Then the film is dropped and reported via the admin bot. An unknown country name is not evidence, so those films stay
 - Arthouse detail pages fetched for better year disambiguation on TMDb
 - Telegram bot: notification for new films + `/programm` command; a second, private bot reports films that were dropped without an identification, since those are invisible on the site by definition
