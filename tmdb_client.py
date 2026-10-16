@@ -41,8 +41,12 @@ def _redact(e: Exception) -> str:
     return re.sub(r"(api_key|apikey)=[^&\s]+", r"\1=REDACTED", str(e), flags=re.IGNORECASE)
 
 
-def lookup_film(title: str, year: int | None = None) -> dict | None:
+def lookup_film(title: str, year: int | None = None,
+                prefer_year: int | None = None) -> dict | None:
     """Look up a film by its (German) display title on TMDb.
+
+    `prefer_year` is the year the cinema states. It does not narrow the search,
+    it decides between the films it returns – see _best_match.
 
     Returns dict with metadata or None if not found/not relevant.
     """
@@ -51,8 +55,12 @@ def lookup_film(title: str, year: int | None = None) -> dict | None:
         logger.warning("TMDB_API_KEY not set. Skipping metadata lookup.")
         return None
 
-    # Check cache first
+    # Check cache first. The preference belongs in the key, since the same
+    # title can resolve to a different film under a different one; it is only
+    # appended when it says something new, so earlier entries stay valid.
     cache_key = f"{title}|{year or ''}"
+    if prefer_year and prefer_year != year:
+        cache_key += f"|~{prefer_year}"
     with get_db() as db:
         cached = get_tmdb_cache(db, cache_key)
     if cached:
@@ -65,7 +73,7 @@ def lookup_film(title: str, year: int | None = None) -> dict | None:
     search_title = _clean_title_for_search(title)
 
     try:
-        result = _search_tmdb(search_title, year, api_key)
+        result = _search_tmdb(search_title, year, api_key, prefer_year)
     except TmdbUnavailableError as e:
         # Caching this would turn a blip into a permanent "not found"
         logger.warning("TMDb unavailable for '%s', not caching: %s", title, _redact(e))
@@ -102,22 +110,26 @@ def _clean_title_for_search(title: str) -> str:
     return title.strip()
 
 
-def _search_tmdb(title: str, year: int | None, api_key: str) -> dict | None:
+def _search_tmdb(title: str, year: int | None, api_key: str,
+                 prefer_year: int | None = None) -> dict | None:
     """Search TMDb for a film by title. Tries German title first, then original."""
     # Strategy 1: Search in German language context
-    result = _tmdb_search_request(title, api_key, language="de-DE", year=year)
+    result = _tmdb_search_request(title, api_key, language="de-DE", year=year,
+                                  prefer_year=prefer_year)
     if result:
         return result
 
     # Strategy 2: Search without language restriction (might catch original titles)
-    result = _tmdb_search_request(title, api_key, language="en-US", year=year)
+    result = _tmdb_search_request(title, api_key, language="en-US", year=year,
+                                  prefer_year=prefer_year)
     if result:
         return result
 
     # Strategy 3: If title looks like it might be the original title
     # (no German articles, contains English/French words), try direct search
     if re.search(r"[A-Za-z]{3,}", title) and not re.search(r"[äöüÄÖÜß]", title):
-        result = _tmdb_search_request(title, api_key, language=None, year=year)
+        result = _tmdb_search_request(title, api_key, language=None, year=year,
+                                      prefer_year=prefer_year)
         if result:
             return result
 
@@ -126,7 +138,8 @@ def _search_tmdb(title: str, year: int | None, api_key: str) -> dict | None:
 
 
 def _tmdb_search_request(title: str, api_key: str, language: str | None = None,
-                         year: int | None = None) -> dict | None:
+                         year: int | None = None,
+                         prefer_year: int | None = None) -> dict | None:
     """Execute a TMDb search API request."""
     params: dict[str, str | int] = {
         "api_key": api_key,
@@ -154,8 +167,7 @@ def _tmdb_search_request(title: str, api_key: str, language: str | None = None,
     if not results:
         return None
 
-    # Take the first result (highest relevance)
-    movie = results[0]
+    movie = _best_match(results, prefer_year, title)
 
     # Get more details (including IMDb ID, runtime, and German title)
     details = _get_movie_details(movie["id"], api_key, language="de-DE")
@@ -185,6 +197,56 @@ def _film_record(movie: dict, details: dict | None) -> dict:
         "runtime_minutes": details.get("runtime") if details else None,
         "tmdb_popularity": movie.get("popularity"),
     }
+
+
+# Ranks a result TMDb gives no release date for behind every dated one,
+# without dropping it: it is still better than nothing.
+_UNDATED_DISTANCE = 10_000
+
+# How popular a result has to be, relative to the search's top hit, before the
+# stated year may promote it over that hit.
+_MIN_POPULARITY_SHARE = 0.1
+
+
+def _best_match(results: list[dict], prefer_year: int | None, title: str) -> dict:
+    """Pick the search result closest to the year the programme states.
+
+    TMDb sorts by popularity, which hands a remake's search the classic:
+    "Sinn und Sinnlichkeit" returns Ang Lee's 1995 film ahead of the 2026
+    adaptation the cinema is actually showing, and the API's own `year` filter
+    does not help, because it matches any release date a film carries and the
+    classic was re-released alongside the remake.
+
+    The year only ever decides between films that go by this title, because a
+    stated year is not always the film's. A marathon of the Lord of the Rings
+    trilogy is listed as a 2025 production, and going by the year alone that
+    pulls a 14-minute short called "Herr der Ringe" ahead of Peter Jackson.
+    Where no result carries the title, popularity stays the better guess.
+    """
+    if prefer_year is None:
+        return results[0]
+
+    # An obscure namesake does not overtake a famous film on the year alone. A
+    # CinemaxX marathon of the trilogy arrives as "Herr der Ringe" dated to the
+    # event year, 2025, and a 14-minute short of that name really was released
+    # in 2025 – Peter Jackson's entry is sixty times as popular, and the right
+    # answer. A remake, which this heuristic exists for, is in the same league
+    # as the film it remakes.
+    popularity_floor = results[0].get("popularity", 0) * _MIN_POPULARITY_SHARE
+    plausible = [
+        movie for movie in results
+        if _title_confirms(movie, title) and movie.get("popularity", 0) >= popularity_floor
+    ]
+    if not plausible:
+        return results[0]
+
+    def distance(indexed: tuple[int, dict]) -> tuple[int, int]:
+        position, movie = indexed
+        release_year = _extract_year(movie.get("release_date"))
+        gap = abs(release_year - prefer_year) if release_year else _UNDATED_DISTANCE
+        return gap, position  # position keeps TMDb's ranking as the tie-break
+
+    return min(enumerate(plausible), key=distance)[1]
 
 
 def _get_movie_details(tmdb_id: int, api_key: str, language: str = "de-DE",

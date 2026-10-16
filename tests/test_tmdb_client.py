@@ -779,3 +779,141 @@ def test_unreachable_tmdb_means_no_objection(monkeypatch):
     monkeypatch.setattr(settings, "TMDB_API_KEY", "key")
     with patch("tmdb_client.requests.get", side_effect=requests.ConnectionError("boom")):
         assert contradicts_production(1, 2024, "Israel") is False
+
+
+# ── Picking among search results ──────────────────────────────────────────────
+
+_REMAKE_RESULTS = {"results": [
+    {"id": 4584, "title": "Sinn und Sinnlichkeit", "original_title": "Sense and Sensibility",
+     "original_language": "en", "release_date": "1995-12-13", "popularity": 37.0},
+    {"id": 1503762, "title": "Sinn und Sinnlichkeit", "original_title": "Sense and Sensibility",
+     "original_language": "en", "release_date": "2026-09-23", "popularity": 34.0},
+]}
+
+
+def test_search_prefers_the_year_the_programme_states(monkeypatch):
+    """TMDb ranks by popularity, which hands a remake's search the classic."""
+    monkeypatch.setattr(settings, "TMDB_API_KEY", "key")
+    with (
+        patch("tmdb_client.requests.get", return_value=_mock_resp(_REMAKE_RESULTS)),
+        patch("tmdb_client._get_movie_details", return_value={}),
+    ):
+        film = _tmdb_search_request("Sinn und Sinnlichkeit", "key", prefer_year=2026)
+
+    assert film["tmdb_id"] == 1503762
+    assert film["release_year"] == 2026
+
+
+def test_search_without_a_preferred_year_keeps_tmdbs_order(monkeypatch):
+    monkeypatch.setattr(settings, "TMDB_API_KEY", "key")
+    with (
+        patch("tmdb_client.requests.get", return_value=_mock_resp(_REMAKE_RESULTS)),
+        patch("tmdb_client._get_movie_details", return_value={}),
+    ):
+        film = _tmdb_search_request("Sinn und Sinnlichkeit", "key")
+
+    assert film["tmdb_id"] == 4584
+
+
+def test_search_prefers_the_classic_when_that_is_what_runs(monkeypatch):
+    """A repertory screening states 1995, and then the classic is the right film."""
+    monkeypatch.setattr(settings, "TMDB_API_KEY", "key")
+    with (
+        patch("tmdb_client.requests.get", return_value=_mock_resp(_REMAKE_RESULTS)),
+        patch("tmdb_client._get_movie_details", return_value={}),
+    ):
+        film = _tmdb_search_request("Sinn und Sinnlichkeit", "key", prefer_year=1995)
+
+    assert film["tmdb_id"] == 4584
+
+
+def test_search_tolerates_a_year_off_by_one(monkeypatch):
+    """Closest wins, so a page a year out still lands on the right film."""
+    monkeypatch.setattr(settings, "TMDB_API_KEY", "key")
+    with (
+        patch("tmdb_client.requests.get", return_value=_mock_resp(_REMAKE_RESULTS)),
+        patch("tmdb_client._get_movie_details", return_value={}),
+    ):
+        film = _tmdb_search_request("Sinn und Sinnlichkeit", "key", prefer_year=2025)
+
+    assert film["tmdb_id"] == 1503762
+
+
+def test_search_does_not_prefer_a_result_without_a_release_date(monkeypatch):
+    monkeypatch.setattr(settings, "TMDB_API_KEY", "key")
+    results = {"results": [
+        {"id": 1, "title": "Egal", "original_language": "en", "popularity": 50.0},
+        {"id": 2, "title": "Egal", "original_language": "en",
+         "release_date": "2026-01-01", "popularity": 45.0},
+    ]}
+    with (
+        patch("tmdb_client.requests.get", return_value=_mock_resp(results)),
+        patch("tmdb_client._get_movie_details", return_value={}),
+    ):
+        film = _tmdb_search_request("Egal", "key", prefer_year=2026)
+
+    assert film["tmdb_id"] == 2
+
+
+def test_search_keeps_the_popular_result_when_no_title_fits(monkeypatch):
+    """A marathon listed as a 2025 production must not pull in a 2025 short film."""
+    monkeypatch.setattr(settings, "TMDB_API_KEY", "key")
+    results = {"results": [
+        {"id": 120, "title": "Der Herr der Ringe: Die Gefährten",
+         "original_title": "The Lord of the Rings: The Fellowship of the Ring",
+         "original_language": "en", "release_date": "2001-12-18", "popularity": 60.0},
+        {"id": 1434460, "title": "Herr der Ringe", "original_title": "Herr der Ringe",
+         "original_language": "en", "release_date": "2025-03-29", "popularity": 1.0},
+    ]}
+    with (
+        patch("tmdb_client.requests.get", return_value=_mock_resp(results)),
+        patch("tmdb_client._get_movie_details", return_value={}),
+    ):
+        film = _tmdb_search_request("Lord Of The Rings Triple (Extended Version - English)",
+                                    "key", prefer_year=2025)
+
+    assert film["tmdb_id"] == 120
+
+
+def test_lookup_film_caches_preferences_separately(db, monkeypatch):
+    """The same title with a different stated year can be a different film."""
+    monkeypatch.setattr(settings, "TMDB_API_KEY", "key")
+    with (
+        patch("tmdb_client.requests.get", return_value=_mock_resp(_REMAKE_RESULTS)),
+        patch("tmdb_client._get_movie_details", return_value={}),
+    ):
+        remake = lookup_film("Sinn und Sinnlichkeit", prefer_year=2026)
+        classic = lookup_film("Sinn und Sinnlichkeit", prefer_year=1995)
+
+    assert remake["tmdb_id"] == 1503762
+    assert classic["tmdb_id"] == 4584
+
+
+def test_search_does_not_let_an_obscure_namesake_win_on_the_year(monkeypatch):
+    """A 14-minute short named "Herr der Ringe" must not beat Peter Jackson."""
+    monkeypatch.setattr(settings, "TMDB_API_KEY", "key")
+    results = {"results": [
+        {"id": 120, "title": "Herr der Ringe", "original_title": "Herr der Ringe",
+         "original_language": "en", "release_date": "2001-12-18", "popularity": 60.0},
+        {"id": 1434460, "title": "Herr der Ringe", "original_title": "Herr der Ringe",
+         "original_language": "en", "release_date": "2025-03-29", "popularity": 1.0},
+    ]}
+    with (
+        patch("tmdb_client.requests.get", return_value=_mock_resp(results)),
+        patch("tmdb_client._get_movie_details", return_value={}),
+    ):
+        film = _tmdb_search_request("Herr der Ringe", "key", prefer_year=2025)
+
+    assert film["tmdb_id"] == 120
+
+
+def test_search_lets_a_comparably_popular_remake_win_on_the_year(monkeypatch):
+    """The remake case this heuristic exists for: same league, newer year."""
+    monkeypatch.setattr(settings, "TMDB_API_KEY", "key")
+    with (
+        patch("tmdb_client.requests.get", return_value=_mock_resp(_REMAKE_RESULTS)),
+        patch("tmdb_client._get_movie_details", return_value={}),
+    ):
+        film = _tmdb_search_request("Sinn und Sinnlichkeit", "key", prefer_year=2026)
+
+    assert film["tmdb_id"] == 1503762

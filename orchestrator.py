@@ -312,7 +312,10 @@ def _enrich_with_tmdb(film_data: dict) -> dict | None:
     def _try_lookup(t: str, y: int | None) -> dict | None:
         """Try the title, then its prefix-stripped and dash-split variants."""
         for candidate in _title_candidates(t):
-            result = lookup_film(candidate, y)
+            # The page's production year does not narrow the search, it picks
+            # between what comes back – otherwise a remake loses to the
+            # better-known film it is remaking.
+            result = lookup_film(candidate, y, prefer_year=arthouse_year or y)
             if result:
                 return result
         return None
@@ -323,8 +326,8 @@ def _enrich_with_tmdb(film_data: dict) -> dict | None:
     if not tmdb_data:
         tmdb_data = _try_lookup(title, year)
 
-    # If arthouse detail page gave us a year, check for year mismatch.
-    # A large discrepancy means TMDb found the wrong film – retry with the correct year.
+    # If the arthouse detail page gave us a year, a large discrepancy means
+    # TMDb found the wrong film – retry with the correct year.
     if tmdb_data and arthouse_year:
         tmdb_year = tmdb_data.get("release_year")
         if tmdb_year and abs(tmdb_year - arthouse_year) > 3:
@@ -336,24 +339,36 @@ def _enrich_with_tmdb(film_data: dict) -> dict | None:
                 tmdb_data = retry
 
     # A title search answers with its best guess, never with a certainty. Where
-    # the page states a year and a production country, hold the guess against
-    # both: a match that disagrees with the cinema on both counts is a
-    # different film, and its language would be the wrong one to filter on.
-    if tmdb_data and contradicts_production(
-        tmdb_data["tmdb_id"], arthouse_year or year, film_data.get("_production_country")
-    ):
-        logger.warning(
-            "Dropping the TMDb match for '%s': it contradicts the programme page", title
-        )
-        tmdb_data = None
+    # the page states a year or a production country, hold the guess against
+    # them: a match that disagrees with the cinema is a different film, and its
+    # language would be the wrong one to filter on.
+    page_country = film_data.get("_production_country")
+    page_year = arthouse_year or year
 
-    # Nothing found by title: ask who made the film. A banner glued to the
-    # front of the title, or a German title TMDb files differently, both end up
-    # here, and the credits identify the film where the title cannot.
+    def _accept(candidate: dict | None) -> dict | None:
+        """Return the match unless the programme page contradicts it."""
+        if candidate and contradicts_production(candidate["tmdb_id"], page_year, page_country):
+            logger.warning(
+                "Dropping the TMDb match for '%s': it contradicts the programme page", title
+            )
+            return None
+        return candidate
+
+    tmdb_data = _accept(tmdb_data)
+
+    # Search again, now constrained to the year the page states. TMDb's own
+    # year filter returns a different set of films, not just a different order,
+    # so this surfaces candidates the popularity-ranked search never offered.
+    if not tmdb_data and page_year:
+        tmdb_data = _accept(_try_lookup(title, page_year))
+
+    # Still nothing: ask who made the film. A banner glued to the front of the
+    # title, or a German title TMDb files differently, both end up here, and
+    # the credits identify the film where the title cannot.
     if not tmdb_data:
         tmdb_data = find_by_credits(
             film_data.get("title_raw") or title,
-            arthouse_year or year,
+            page_year,
             cast=film_data.get("_cast"),
             director=film_data.get("_director"),
         )

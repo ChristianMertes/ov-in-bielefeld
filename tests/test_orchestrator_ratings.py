@@ -141,7 +141,7 @@ def test_run_scrape_tmdb_enrichment_error_continues():
 
     call_count = 0
 
-    def flaky_lookup(title, year=None):
+    def flaky_lookup(title, year=None, prefer_year=None):
         nonlocal call_count
         call_count += 1
         if "Film A" in str(title):

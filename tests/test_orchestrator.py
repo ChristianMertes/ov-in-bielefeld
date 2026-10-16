@@ -70,7 +70,7 @@ def test_enrich_uses_original_title_first():
     film = _film_data(title="Der Pate", _original_title="The Godfather")
     calls = []
 
-    def fake_lookup(title, year=None):
+    def fake_lookup(title, year=None, prefer_year=None):
         calls.append(title)
         return {"original_language": "en", "tmdb_id": 238} if title == "The Godfather" else None
 
@@ -85,7 +85,7 @@ def test_enrich_falls_back_to_display_title():
     film = _film_data(title="Oppenheimer", _original_title="Unknown Original")
     tmdb = {"original_language": "en", "tmdb_id": 872585}
 
-    def fake_lookup(title, year=None):
+    def fake_lookup(title, year=None, prefer_year=None):
         return tmdb if title == "Oppenheimer" else None
 
     with patch("orchestrator.lookup_film", side_effect=fake_lookup):
@@ -99,7 +99,7 @@ def test_enrich_subtitle_retry():
     film = _film_data(title="Dune: Part Two")
     tmdb = {"original_language": "en", "tmdb_id": 693134}
 
-    def fake_lookup(title, year=None):
+    def fake_lookup(title, year=None, prefer_year=None):
         return tmdb if title == "Part Two" else None
 
     with patch("orchestrator.lookup_film", side_effect=fake_lookup):
@@ -116,7 +116,7 @@ def test_enrich_splits_double_title_and_finds_original():
     film = _film_data(title="Bir kar tanesinin ömrü – Die Lebensdauer einer Schneeflocke")
     tmdb = {"original_language": "tr", "tmdb_id": 4242}
 
-    def fake_lookup(title, year=None):
+    def fake_lookup(title, year=None, prefer_year=None):
         return tmdb if title == "Bir kar tanesinin ömrü" else None
 
     with patch("orchestrator.lookup_film", side_effect=fake_lookup):
@@ -129,7 +129,7 @@ def test_enrich_splits_double_title_german_half():
     film = _film_data(title="Der Astronaut - Project Hail Mary")
     tmdb = {"original_language": "en", "tmdb_id": 687163}
 
-    def fake_lookup(title, year=None):
+    def fake_lookup(title, year=None, prefer_year=None):
         return tmdb if title == "Project Hail Mary" else None
 
     with patch("orchestrator.lookup_film", side_effect=fake_lookup):
@@ -143,7 +143,7 @@ def test_enrich_splits_double_title_after_prefix_strip():
     film = _film_data(title="CINÉMA_FRANÇAIS: La brigade – Die Küchenbrigade")
     tmdb = {"original_language": "fr", "tmdb_id": 800}
 
-    def fake_lookup(title, year=None):
+    def fake_lookup(title, year=None, prefer_year=None):
         return tmdb if title == "La brigade" else None
 
     with patch("orchestrator.lookup_film", side_effect=fake_lookup):
@@ -156,7 +156,7 @@ def test_enrich_does_not_split_hyphenated_words():
     film = _film_data(title="Spider-Man")
     tried = []
 
-    def fake_lookup(title, year=None):
+    def fake_lookup(title, year=None, prefer_year=None):
         tried.append(title)
 
     with patch("orchestrator.lookup_film", side_effect=fake_lookup):
@@ -169,7 +169,7 @@ def test_enrich_full_title_still_preferred():
     film = _film_data(title="Vera - Die Erbin")
     tried = []
 
-    def fake_lookup(title, year=None):
+    def fake_lookup(title, year=None, prefer_year=None):
         tried.append(title)
         return {"original_language": "en", "tmdb_id": 1} if title == "Vera - Die Erbin" else None
 
@@ -187,7 +187,7 @@ def test_enrich_year_mismatch_triggers_retry():
 
     call_years = []
 
-    def fake_lookup(title, year=None):
+    def fake_lookup(title, year=None, prefer_year=None):
         call_years.append(year)
         if year == 2024:
             return right_tmdb
@@ -802,3 +802,38 @@ def test_enrich_checks_the_match_against_the_page_year():
                                        _production_country="Italien"))
 
     assert mock_check.call_args.args == (9, 1974, "Italien")
+
+
+def test_enrich_retries_with_the_stated_year_after_a_contradiction():
+    """TMDb's year filter returns other films, not just another order of them."""
+    contradicted = {"original_language": "en", "tmdb_id": 1, "release_year": 2024}
+    year_filtered = {"original_language": "he", "tmdb_id": 2, "release_year": 2024}
+    calls = []
+
+    def fake_lookup(title, year=None, prefer_year=None):
+        calls.append(year)
+        return year_filtered if year else contradicted
+
+    with (
+        patch("orchestrator.lookup_film", side_effect=fake_lookup),
+        patch("orchestrator.contradicts_production", side_effect=[True, False]),
+        patch("orchestrator.find_by_credits", return_value=None) as mock_credits,
+    ):
+        film = _unsearchable("Real Estate", _production_country="Israel/Frankreich",
+                             _arthouse_year=2023, _cast=None)
+        result = _enrich_with_tmdb(film)
+
+    assert 2023 in calls           # retried with the year the page states
+    mock_credits.assert_not_called()  # the retry already settled it
+    assert result is None          # Hebrew, so the language filter drops it
+
+
+def test_enrich_falls_back_to_credits_when_the_retry_also_contradicts():
+    with (
+        patch("orchestrator.lookup_film", return_value={"original_language": "en", "tmdb_id": 1}),
+        patch("orchestrator.contradicts_production", return_value=True),
+        patch("orchestrator.find_by_credits", return_value=None) as mock_credits,
+    ):
+        _enrich_with_tmdb(_unsearchable("Real Estate", _arthouse_year=2023))
+
+    assert mock_credits.called
