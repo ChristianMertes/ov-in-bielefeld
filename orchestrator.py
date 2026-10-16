@@ -18,6 +18,7 @@ import cache
 from database import (
     cleanup_old_showtimes,
     cleanup_old_sneak_candidates,
+    delete_unmatched_films,
     get_db,
     get_films_with_imdb_id,
     get_sneak_showtimes,
@@ -45,6 +46,14 @@ _TITLE_SEPARATOR = re.compile(r"\s+[-–—]\s+")
 # Shorter fragments ("Teil 2", "OV") are too ambiguous to search TMDb with.
 _MIN_TITLE_PART_LEN = 3
 
+# A series banner such as "Cinema! Italia!" is printed in front of the title
+# with no separator at all, so the colon split below cannot see it. The
+# scrapers strip the banners they know; this catches the next one, because an
+# unsearchable title means no match, and no match means no language filter.
+# Two or more exclamation-terminated words are a banner, never a title, which
+# is what keeps "Mamma Mia! Here We Go Again" whole.
+_SERIES_BANNER = re.compile(r"^(?:\S+!\s+){2,}(?=\S)")
+
 # How many release Thursdays to fetch a candidate line-up for in advance, on
 # top of the ones upcoming sneaks already point at. Two covers the week a
 # cinema's programme reaches into, so a sneak's line-up is stored before the
@@ -62,6 +71,11 @@ def _title_candidates(title: str) -> list[str]:
     candidates = [title]
     if ": " in title:
         candidates.append(title.split(": ", 1)[1])
+
+    for base in list(candidates):
+        without_banner = _SERIES_BANNER.sub("", base, count=1)
+        if without_banner != base:
+            candidates.append(without_banner)
 
     for base in list(candidates):
         parts = [p.strip() for p in _TITLE_SEPARATOR.split(base, maxsplit=1)]
@@ -105,11 +119,14 @@ def run_scrape(notify_callback: Callable[[int, dict], None] | None = None) -> di
     # to access tmdb_cache. This phase must complete before Phase 3 opens the
     # main write transaction, to avoid nested write locks on the same DB.
     enriched_films = []
+    rejected_titles: list[str] = []
     for film_data in all_films:
         try:
             enriched = _enrich_with_tmdb(film_data)
             if enriched is not None:
                 enriched_films.append(enriched)
+            else:
+                rejected_titles.extend(_stored_under(film_data))
         except Exception as e:  # noqa: BLE001
             title = film_data.get("title_display", "?")
             logger.error("TMDb enrichment failed for '%s': %s", title, e)
@@ -119,6 +136,12 @@ def run_scrape(notify_callback: Callable[[int, dict], None] | None = None) -> di
     # ── Phase 3: DB writes ─────────────────────────────────────────────────
     new_films = []
     with get_db() as db:
+        # Before the writes, so a film another source delivers in this same run
+        # is not removed again right after being stored.
+        removed = delete_unmatched_films(db, rejected_titles)
+        if removed:
+            logger.info("Removed %d film(s) now known not to be EN/FR", removed)
+
         for film_data in enriched_films:
             try:
                 film_id, is_new = _write_film(db, film_data)
@@ -177,6 +200,16 @@ def run_scrape(notify_callback: Callable[[int, dict], None] | None = None) -> di
         "new_films": len(new_films),
         "new_film_titles": [f["title_display"] for _, f in new_films],
     }
+
+
+def _stored_under(film_data: dict) -> list[str]:
+    """Return the titles an earlier scrape could have stored this film under.
+
+    Scrapers clean the title they report, so a film that was stored before a
+    banner was known sits under the raw one.
+    """
+    titles = [film_data.get("title_display"), film_data.get("title_raw")]
+    return list(dict.fromkeys(t for t in titles if t))
 
 
 def _sneak_release_dates(showtimes: list) -> dict[str, str]:

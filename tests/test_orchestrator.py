@@ -12,6 +12,7 @@ from orchestrator import (
     _enrich_with_tmdb,
     _refresh_sneak_candidates,
     _sneak_release_dates,
+    _title_candidates,
     _write_film,
     run_scrape,
 )
@@ -525,3 +526,81 @@ def test_refresh_sneak_candidates_look_ahead_uses_sneak_language(db):
 def test_sneak_release_dates_empty_without_sneaks():
     """No sneaks in the programme means no TMDb traffic at all."""
     assert _sneak_release_dates([]) == {}
+
+
+# ── Series banners ────────────────────────────────────────────────────────────
+
+def test_title_candidates_strips_unknown_series_banner():
+    """A banner the scrapers do not know yet must still yield a usable lookup."""
+    assert "GIOIA MIA" in _title_candidates("Cinema! Italia! GIOIA MIA")
+
+
+def test_title_candidates_keeps_full_title_first():
+    candidates = _title_candidates("Cinema! Italia! GIOIA MIA")
+    assert candidates[0] == "Cinema! Italia! GIOIA MIA"
+
+
+def test_title_candidates_leaves_single_exclamation_title_alone():
+    """'Mamma Mia! Here We Go Again' is a title, not a banner plus a title."""
+    assert _title_candidates("Mamma Mia! Here We Go Again") == ["Mamma Mia! Here We Go Again"]
+
+
+# ── Removing films the language filter now rejects ─────────────────────────────
+
+def _store_unmatched(db, title):
+    """Store a film the way a scrape without a TMDb match would have."""
+    from database import upsert_film, upsert_showtime
+    film_id, _ = upsert_film(db, title)
+    upsert_showtime(db, film_id, "lichtwerk", _future(3), "OmU", None)
+    db.commit()
+    return film_id
+
+
+def _run_scrape_rejecting(film, tmdb):
+    with (
+        patch("orchestrator.scrape_arthouse", return_value=[film]),
+        patch("orchestrator.scrape_cinemaxx", return_value=[]),
+        patch("orchestrator.lookup_film", return_value=tmdb),
+        patch("orchestrator.fetch_imdb_ratings", return_value={}),
+        patch("orchestrator.fetch_rt_scores", return_value={}),
+    ):
+        return run_scrape()
+
+
+def test_run_scrape_removes_row_stored_under_the_banner_title(db):
+    """The Italian films sat in the DB under their banner title, unmatched."""
+    _store_unmatched(db, "Cinema! Italia! GIOIA MIA")
+    film = {**_mock_scraper_film("GIOIA MIA"), "title_raw": "Cinema! Italia! GIOIA MIA"}
+
+    _run_scrape_rejecting(film, {"original_language": "it", "tmdb_id": 42})
+
+    assert db.execute("SELECT COUNT(*) FROM films").fetchone()[0] == 0
+
+
+def test_run_scrape_removes_row_stored_under_the_cleaned_title(db):
+    _store_unmatched(db, "GIOIA MIA")
+
+    _run_scrape_rejecting(_mock_scraper_film("GIOIA MIA"), {"original_language": "it", "tmdb_id": 42})
+
+    assert db.execute("SELECT COUNT(*) FROM films").fetchone()[0] == 0
+
+
+def test_run_scrape_keeps_matched_film_with_the_same_title(db):
+    """A row with a TMDb id passed the filter on its own identity – leave it."""
+    from database import upsert_film, upsert_showtime
+    film_id, _ = upsert_film(db, "GIOIA MIA", tmdb_id=999, original_language="en")
+    upsert_showtime(db, film_id, "cinemaxx", _future(3), "OV", None)
+    db.commit()
+
+    _run_scrape_rejecting(_mock_scraper_film("GIOIA MIA"), {"original_language": "it", "tmdb_id": 42})
+
+    assert db.execute("SELECT COUNT(*) FROM films WHERE tmdb_id = 999").fetchone()[0] == 1
+
+
+def test_run_scrape_keeps_unmatched_film_it_cannot_judge(db):
+    """Without a TMDb match there is no verdict, so the row stays (fail open)."""
+    _store_unmatched(db, "Unknown Film")
+
+    _run_scrape_rejecting(_mock_scraper_film("Unknown Film"), None)
+
+    assert db.execute("SELECT COUNT(*) FROM films").fetchone()[0] == 1

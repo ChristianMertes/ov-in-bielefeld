@@ -16,7 +16,7 @@ Deployed to https://ov-in-bielefeld.de/.
 
 - Scrapes multiple times daily, more frequently on Wednesdays (when the new Kinowoche programme starts)
 - TMDb integration: original title, poster, IMDb/RT ratings, runtime
-- Language filtering via TMDb: only English and French films, no German, Japanese, etc.
+- Language filtering via TMDb: only English and French films, no German, Japanese, etc. Series banners (`Cinema! Italia!`, `NIPPON CINEMA:`) are stripped from scraped titles first – an unsearchable title gets no TMDb match, and without a match there is nothing to filter on
 - Arthouse detail pages fetched for better year disambiguation on TMDb
 - Telegram bot: notification for new films + `/programm` command
 - Web UI with cinema filter and sorting by date, title, rating, or popularity

@@ -369,6 +369,26 @@ def get_showtimes_for_films(db: sqlite3.Connection, film_ids: list[int]) -> dict
     return result
 
 
+def delete_unmatched_films(db: sqlite3.Connection, titles: list[str]) -> int:
+    """Delete films stored under these titles that never got a TMDb match.
+
+    A film the language filter rejects today may already sit here from a scrape
+    that could not match it – back when its title still carried a series
+    banner, say. Nothing else gets those rows off the site: they hold showtimes
+    weeks into the future, so neither the cleanup nor the next scrape touches
+    them. Rows that do carry a TMDb id matched on their own identity and passed
+    the filter, so they are left alone. Showtimes follow via ON DELETE CASCADE.
+    """
+    if not titles:
+        return 0
+    placeholders = ",".join("?" * len(titles))
+    cursor = db.execute(
+        f"DELETE FROM films WHERE tmdb_id IS NULL AND title_display IN ({placeholders})",  # noqa: S608
+        titles,
+    )
+    return cursor.rowcount
+
+
 def get_sneak_showtimes(db: sqlite3.Connection) -> list:
     """Get all future showtimes of sneak entries, with their film's language."""
     now = now_local().isoformat()

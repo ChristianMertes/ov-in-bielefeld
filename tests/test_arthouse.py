@@ -4,7 +4,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from scrapers.arthouse import _fix_mojibake, _parse_german_date, scrape_arthouse
+from scrapers.arthouse import (
+    _fix_mojibake,
+    _parse_german_date,
+    _strip_series_prefix,
+    scrape_arthouse,
+)
 
 # ── _parse_german_date ────────────────────────────────────────────────────────
 
@@ -187,3 +192,29 @@ def test_scrape_booking_urls_present(scraped_films):
             assert "kinoheld.de" in (st.get("booking_url") or ""), (
                 f"Missing booking URL for '{film['title_display']}'"
             )
+
+
+# ── _strip_series_prefix ──────────────────────────────────────────────────────
+
+@pytest.mark.parametrize(("raw", "expected"), [
+    # The banner that let six Italian films through: no colon, so nothing
+    # separated it from the title and TMDb was searched for the whole string.
+    ("Cinema! Italia! GIOIA MIA", "GIOIA MIA"),
+    ("Cinema! Italia! Gewalt und Leidenschaft", "Gewalt und Leidenschaft"),
+    ("NIPPON CINEMA: Exit 8", "Exit 8"),
+    ("CINÉMA_FRANÇAIS: Anatomie d'une chute", "Anatomie d'une chute"),
+    ("best_of_cinema: Pulp Fiction", "Pulp Fiction"),
+    ("GWÖ:Tomorrow", "Tomorrow"),
+])
+def test_series_prefix_stripped(raw, expected):
+    assert _strip_series_prefix(raw) == expected
+
+
+@pytest.mark.parametrize("title", [
+    "Dovzhenko. Legend of Ukrainian Cinema",
+    "Cinema Paradiso",
+    "Familiensache",
+    "Anatomie d'une chute",
+])
+def test_titles_without_a_banner_are_untouched(title):
+    assert _strip_series_prefix(title) == title

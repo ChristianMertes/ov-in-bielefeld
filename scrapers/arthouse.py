@@ -173,6 +173,37 @@ def _find_film_blocks_fallback(soup: BeautifulSoup) -> list:
     return blocks
 
 
+# Series banners the programme page prints in front of a film's title. They name
+# a season, not the film, and TMDb knows none of them – so a banner left in
+# place means no match, and with no match there is no language filter either
+# ("Cinema! Italia!" let six Italian films onto the site that way).
+_SERIES_PREFIXES = (
+    "CINÉMA_FRANÇAIS",
+    "Cinema! Italia!",
+    "NIPPON CINEMA",
+    "best_of_cinema",
+    "filmhaus_präsentiert",
+    "Familiensache",
+    "GWÖ",
+    "GRÜNES KINO",
+    "Retrospektive Spielberg",
+    "Exhibition on Screen",
+)
+
+# A banner is followed by a colon, or – when it ends in its own punctuation,
+# as "Cinema! Italia!" does – by nothing but space. Requiring one or the other
+# keeps a film actually titled "Familiensache" intact.
+_SERIES_PREFIX = re.compile(
+    r"^(?:" + "|".join(re.escape(p) for p in _SERIES_PREFIXES) + r")(?:\s*:\s*|\s+)",
+    re.IGNORECASE,
+)
+
+
+def _strip_series_prefix(title: str) -> str:
+    """Remove a known series banner from the front of a scraped title."""
+    return _SERIES_PREFIX.sub("", title, count=1).strip()
+
+
 def _parse_film_block(block: Tag) -> dict | None:
     """Parse a single film block into a structured dict."""
     # Extract title
@@ -204,15 +235,7 @@ def _parse_film_block(block: Tag) -> dict | None:
     # The page mixes encodings; repair before the title is used anywhere.
     title = _fix_mojibake(title)
 
-    # Clean up title: remove prefixes like "CINÉMA_FRANÇAIS:", "best_of_cinema:", etc.
-    title_clean = title
-    prefix_match = re.match(
-        r"^(?:CINÉMA_FRANÇAIS|best_of_cinema|filmhaus_präsentiert|Familiensache|"
-        r"GWÖ|GRÜNES KINO|Retrospektive Spielberg|Exhibition on Screen)\s*:\s*",
-        title, re.IGNORECASE
-    )
-    if prefix_match:
-        title_clean = title[prefix_match.end():].strip()
+    title_clean = _strip_series_prefix(title)
 
     # Extract detail URL
     detail_url = None
